@@ -1,11 +1,17 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional
 
 
 class Product(BaseModel):
+
     account_id: str
+
     name: str
-    price: float
+
+    price: float = 0
+
     stock: Optional[float] = 0
+
     unit: Optional[str] = None
-    aliases: List[str] = []
+
+    is_active: bool = True

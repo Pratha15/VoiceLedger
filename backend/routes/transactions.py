@@ -4,9 +4,64 @@ from models.transaction import Transaction
 from database import db
 from utils.resolver import find_customer, find_product
 from bson import ObjectId
+import re
 
 
 router = APIRouter()
+
+
+# =========================================================
+# HELPERS
+# =========================================================
+
+def clean_text(value: str) -> str:
+    return " ".join((value or "").strip().split())
+
+
+def india_day_bounds(date_value: str | None):
+    """
+    Convert an Indian calendar date into UTC boundaries.
+
+    MongoDB stores timestamps in UTC, while the dashboard
+    works with Indian calendar dates.
+    """
+    india = timezone(timedelta(hours=5, minutes=30))
+
+    if date_value:
+        start_local = datetime.strptime(
+            date_value,
+            "%Y-%m-%d"
+        ).replace(tzinfo=india)
+    else:
+        start_local = datetime.now(india).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0
+        )
+
+    end_local = start_local + timedelta(days=1)
+
+    return (
+        start_local.astimezone(timezone.utc),
+        end_local.astimezone(timezone.utc)
+    )
+
+
+def calculate_payment_status(total_amount: float, paid_amount: float):
+    pending_amount = round(
+        total_amount - paid_amount,
+        2
+    )
+
+    if pending_amount == 0:
+        payment_status = "paid"
+    elif paid_amount == 0:
+        payment_status = "credit"
+    else:
+        payment_status = "partial"
+
+    return pending_amount, payment_status
 
 
 # =========================================================
@@ -29,7 +84,19 @@ def create_transaction(transaction: Transaction):
 
     transaction.customer = customer["name"]
 
+    if not transaction.items:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one product is required"
+        )
+
     for item in transaction.items:
+
+        if not item.product:
+            raise HTTPException(
+                status_code=400,
+                detail="Product name is required"
+            )
 
         product = find_product(
             transaction.account_id,
@@ -43,6 +110,12 @@ def create_transaction(transaction: Transaction):
             )
 
         item.product = product["name"]
+
+        if item.quantity is None or item.quantity <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid quantity for product: {item.product}"
+            )
 
     # -----------------------------------------------------
     # Amount validation
@@ -70,19 +143,10 @@ def create_transaction(transaction: Transaction):
     # Payment status
     # -----------------------------------------------------
 
-    pending_amount = (
-        transaction.total_amount -
+    pending_amount, payment_status = calculate_payment_status(
+        transaction.total_amount,
         transaction.paid_amount
     )
-
-    if pending_amount == 0:
-        payment_status = "paid"
-
-    elif transaction.paid_amount == 0:
-        payment_status = "credit"
-
-    else:
-        payment_status = "partial"
 
     # -----------------------------------------------------
     # Prepare database document
@@ -90,6 +154,14 @@ def create_transaction(transaction: Transaction):
 
     transaction_data = transaction.model_dump()
 
+    now = datetime.now(timezone.utc)
+
+    transaction_data["created_at"] = (
+        transaction_data.get("created_at")
+        or now
+    )
+
+    transaction_data["updated_at"] = now
     transaction_data["pending_amount"] = pending_amount
     transaction_data["payment_status"] = payment_status
 
@@ -111,29 +183,53 @@ def create_transaction(transaction: Transaction):
 # GET TRANSACTIONS
 # =========================================================
 
-def india_day_bounds(date_value: str | None):
-    india = timezone(timedelta(hours=5, minutes=30))
-    if date_value:
-        start_local = datetime.strptime(date_value, "%Y-%m-%d").replace(tzinfo=india)
-    else:
-        start_local = datetime.now(india).replace(hour=0, minute=0, second=0, microsecond=0)
-    end_local = start_local + timedelta(days=1)
-    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
-
-
 @router.get("/transactions")
-def get_transactions(account_id: str, date: str | None = None, start_date: str | None = None, end_date: str | None = None):
-    query = {"account_id": account_id}
+def get_transactions(
+    account_id: str,
+    date: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None
+):
+
+    query = {
+        "account_id": account_id
+    }
+
     if date:
+
         start, end = india_day_bounds(date)
-        query["created_at"] = {"$gte": start, "$lt": end}
+
+        query["created_at"] = {
+            "$gte": start,
+            "$lt": end
+        }
+
     elif start_date or end_date:
-        start = india_day_bounds(start_date)[0] if start_date else datetime.min.replace(tzinfo=timezone.utc)
-        end = india_day_bounds(end_date)[1] if end_date else datetime.max.replace(tzinfo=timezone.utc)
-        query["created_at"] = {"$gte": start, "$lt": end}
+
+        if start_date:
+            start = india_day_bounds(start_date)[0]
+        else:
+            start = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+        if end_date:
+            end = india_day_bounds(end_date)[1]
+        else:
+            end = datetime.max.replace(
+                tzinfo=timezone.utc
+            )
+
+        query["created_at"] = {
+            "$gte": start,
+            "$lt": end
+        }
 
     transactions = list(
-        db.transactions.find(query).sort("created_at", -1)
+        db.transactions.find(query).sort(
+            "created_at",
+            -1
+        )
     )
 
     for transaction in transactions:
@@ -157,19 +253,28 @@ def get_summary(account_id: str):
         })
     )
 
-    total_sales = sum(
-        t.get("total_amount", 0)
-        for t in transactions
+    total_sales = round(
+        sum(
+            float(t.get("total_amount", 0) or 0)
+            for t in transactions
+        ),
+        2
     )
 
-    total_collected = sum(
-        t.get("paid_amount", 0)
-        for t in transactions
+    total_collected = round(
+        sum(
+            float(t.get("paid_amount", 0) or 0)
+            for t in transactions
+        ),
+        2
     )
 
-    total_pending = sum(
-        t.get("pending_amount", 0)
-        for t in transactions
+    total_pending = round(
+        sum(
+            float(t.get("pending_amount", 0) or 0)
+            for t in transactions
+        ),
+        2
     )
 
     return {
@@ -190,11 +295,25 @@ def get_customer_ledger(
     account_id: str
 ):
 
+    cleaned_name = clean_text(customer_name)
+
+    if not cleaned_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Customer name is required"
+        )
+
     transactions = list(
         db.transactions.find({
             "account_id": account_id,
-            "customer": customer_name
-        })
+            "customer": {
+                "$regex": f"^{re.escape(cleaned_name)}$",
+                "$options": "i"
+            }
+        }).sort(
+            "created_at",
+            -1
+        )
     )
 
     for transaction in transactions:
@@ -202,23 +321,32 @@ def get_customer_ledger(
             transaction["_id"]
         )
 
-    total_purchased = sum(
-        t.get("total_amount", 0)
-        for t in transactions
+    total_purchased = round(
+        sum(
+            float(t.get("total_amount", 0) or 0)
+            for t in transactions
+        ),
+        2
     )
 
-    total_paid = sum(
-        t.get("paid_amount", 0)
-        for t in transactions
+    total_paid = round(
+        sum(
+            float(t.get("paid_amount", 0) or 0)
+            for t in transactions
+        ),
+        2
     )
 
-    total_pending = sum(
-        t.get("pending_amount", 0)
-        for t in transactions
+    total_pending = round(
+        sum(
+            float(t.get("pending_amount", 0) or 0)
+            for t in transactions
+        ),
+        2
     )
 
     return {
-        "customer": customer_name,
+        "customer": cleaned_name,
         "total_purchased": total_purchased,
         "total_paid": total_paid,
         "total_pending": total_pending,
@@ -256,19 +384,40 @@ def mark_payment_done(
             detail="Transaction not found"
         )
 
-    db.transactions.update_one(
+    pending_amount = float(
+        transaction.get("pending_amount", 0) or 0
+    )
+
+    if pending_amount <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Transaction is already paid"
+        )
+
+    now = datetime.now(timezone.utc)
+
+    result = db.transactions.update_one(
         {
             "_id": object_id,
-            "account_id": account_id
+            "account_id": account_id,
+            "pending_amount": {"$gt": 0},
         },
         {
             "$set": {
                 "paid_amount": transaction["total_amount"],
                 "pending_amount": 0,
-                "payment_status": "paid"
+                "payment_status": "paid",
+                "payment_method": "manual",
+                "updated_at": now,
             }
         }
     )
+
+    if result.modified_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Transaction was already updated"
+        )
 
     return {
         "message": "Payment marked as completed!",

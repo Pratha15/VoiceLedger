@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import os
 import re
+import time
 
 from database import db
 from utils.resolver import find_customer, find_product
@@ -46,6 +47,10 @@ class AIUpdate(BaseModel):
     total_amount: Optional[float] = None
     paid_amount: Optional[float] = None
     payment_method: Optional[str] = None
+    stock_product: Optional[str] = None
+    stock_quantity: Optional[float] = None
+    stock_unit: Optional[str] = None
+    stock_price: Optional[float] = None
 
 
 class AIResult(BaseModel):
@@ -54,6 +59,7 @@ class AIResult(BaseModel):
         "payment",
         "query",
         "correction",
+        "stock_addition",
         "unknown"
     ]
 
@@ -309,6 +315,445 @@ def language_text(language: str, key: str) -> str:
     )
 
 
+def stock_product_question(language: str) -> str:
+    language = normalize_language(language)
+    if language == "mr":
+        return "स्टॉकमध्ये कोणते उत्पादन जोडायचे?"
+    if language == "hi":
+        return "स्टॉक में कौन सा उत्पाद जोड़ना है?"
+    return "Which product should I add to stock?"
+
+
+def stock_quantity_question(language: str, product: str) -> str:
+    language = normalize_language(language)
+    if language == "mr":
+        return f"{product} किती प्रमाणात स्टॉकमध्ये जोडायचे?"
+    if language == "hi":
+        return f"{product} कितनी मात्रा में स्टॉक में जोड़ना है?"
+    return f"How many units of {product} should I add to stock?"
+
+
+def stock_price_question(language: str, product: str, unit: str | None) -> str:
+    language = normalize_language(language)
+    unit_text = unit or "unit"
+    if language == "mr":
+        return f"{product} ची प्रति {unit_text} किंमत किती आहे?"
+    if language == "hi":
+        return f"{product} की प्रति {unit_text} कीमत कितनी है?"
+    return f"What is the price per {unit_text} for {product}?"
+
+
+def stock_added_reply(language: str, product: str, quantity: float, unit: str | None, price: float | None = None) -> str:
+    q = f"{quantity:g}"
+    u = f" {unit}" if unit else ""
+    if language == "mr":
+        extra = f" किंमत: ₹{price:g} प्रति {unit or 'unit'}." if price is not None else ""
+        return f"ठीक आहे, {product} चे {q}{u} स्टॉकमध्ये जोडले आहे.{extra}"
+    if language == "hi":
+        extra = f" कीमत: ₹{price:g} प्रति {unit or 'यूनिट'}." if price is not None else ""
+        return f"ठीक है, {product} के {q}{u} स्टॉक में जोड़ दिए हैं।{extra}"
+    extra = f" Price: ₹{price:g} per {unit or 'unit'}." if price is not None else ""
+    return f"Done, I added {q}{u} of {product} to your stock.{extra}"
+
+
+def stock_new_product_question(language: str, product: str, quantity: float, unit: str | None) -> str:
+    q = f"{quantity:g}"
+    u = unit or "unit"
+    language = normalize_language(language)
+    if language == "mr":
+        return f"{product} तुमच्या उत्पादन यादीत नाही. {q} {u} स्टॉकसह नवीन उत्पादन जोडू का?"
+    if language == "hi":
+        return f"{product} आपकी उत्पाद सूची में नहीं है। {q} {u} स्टॉक के साथ नया उत्पाद जोड़ दूँ?"
+    return f"{product} is not in your product list. Should I add it with {q} {u} in stock?"
+
+
+def stock_recheck_requested(text: str) -> bool:
+    t = " ".join((text or "").lower().split())
+    markers = (
+        "check stock", "check the stock", "check inventory", "check again",
+        "recheck", "re-check", "again check", "stock check",
+        "stock me dikha", "stock mein dikha", "stock me dikh",
+        "stock mein dikh", "नहीं दिख", "नहीं दिख रहा", "दिख नहीं",
+        "फिर से चेक", "फिर चेक", "दोबारा चेक", "पुन्हा चेक",
+        "स्टॉकमध्ये दिसत", "स्टॉकमध्ये दिसत नाही", "स्टॉक मध्ये दिसत नाही",
+        "पुन्हा तपास", "तपासून पाह", "तपासा",
+    )
+    return any(marker in t for marker in markers)
+
+
+def stock_unit_tokens() -> tuple[str, ...]:
+    return (
+        "packet", "packets", "pack", "packs", "piece", "pieces", "pc", "pcs",
+        "kg", "kilo", "kilos", "kilogram", "kilograms", "unit", "units",
+        "पैकेट", "पैकेट्स", "पॅकेट", "पॅकेट्स", "पीस", "नग",
+        "किलो", "किलोग्राम", "युनिट", "युनिट्स",
+    )
+
+
+def clean_stock_product_name(name: Optional[str]) -> Optional[str]:
+    """Remove quantity/unit scaffolding accidentally returned as the product name."""
+    if not name:
+        return None
+
+    value = " ".join(str(name).strip().split())
+    if not value:
+        return None
+
+    # Strip leading quantity, unit and filler words.
+    unit_pattern = "|".join(re.escape(x) for x in stock_unit_tokens())
+    value = re.sub(rf"^\s*\d+(?:\.\d+)?\s+(?:{unit_pattern})\s+(?:of|का|के|की|चे|च्या|चा|ची)?\s*", "", value, flags=re.I)
+    value = re.sub(rf"^\s*(?:{unit_pattern})\s+(?:of|का|के|की|चे|च्या|चा|ची)?\s*", "", value, flags=re.I)
+
+    # Gemini sometimes returns "Packets Handkerchiefs" for
+    # "50 packets of handkerchiefs". Remove only a leading unit token.
+    value = re.sub(rf"^\s*(?:{unit_pattern})\s+", "", value, flags=re.I)
+
+    # Strip trailing unit tokens too, but do not remove a legitimate word in the middle.
+    value = re.sub(rf"\s+(?:{unit_pattern})\s*$", "", value, flags=re.I)
+
+    value = re.sub(r"^\s*(?:of|का|के|की|चे|च्या|चा|ची)\s+", "", value, flags=re.I)
+    value = " ".join(value.split())
+    return value or None
+
+
+def normalize_stock_ai_result(ai_result: AIResult) -> AIResult:
+    if ai_result.intent != "stock_addition":
+        return ai_result
+
+    if ai_result.updates.stock_product:
+        cleaned = clean_stock_product_name(ai_result.updates.stock_product)
+        if cleaned:
+            ai_result.updates.stock_product = cleaned
+
+    if ai_result.updates.items:
+        for item in ai_result.updates.items:
+            if item.product:
+                item.product = clean_stock_product_name(item.product) or item.product.strip()
+
+    return ai_result
+
+
+def get_last_stock_action(account_id: str, chat_id: Optional[str]) -> Optional[dict]:
+    if not chat_id:
+        return None
+    session = db.chat_sessions.find_one(
+        {"account_id": account_id, "chat_id": chat_id},
+        {"last_stock_action": 1}
+    )
+    return session.get("last_stock_action") if session else None
+
+
+def stock_recheck_reply(language: str, action: dict, product: Optional[dict]) -> dict:
+    product_name = (product or {}).get("name") or action.get("product") or "this product"
+    stock = float((product or {}).get("stock", 0))
+    unit = (product or {}).get("unit") or action.get("unit") or "unit"
+    price = (product or {}).get("price")
+
+    if product:
+        if language == "mr":
+            reply = f"हो, {product_name} स्टॉकमध्ये सेव आहे. सध्याचा स्टॉक {stock:g} {unit} आहे."
+        elif language == "hi":
+            reply = f"हाँ, {product_name} स्टॉक में सेव है। अभी स्टॉक {stock:g} {unit} है।"
+        else:
+            reply = f"Yes, {product_name} is saved in stock. Current stock is {stock:g} {unit}."
+    else:
+        if language == "mr":
+            reply = f"मला {product_name} स्टॉकमध्ये सापडले नाही."
+        elif language == "hi":
+            reply = f"मुझे {product_name} स्टॉक में नहीं मिला।"
+        else:
+            reply = f"I could not find {product_name} in your stock."
+
+    result = {
+        "intent": "stock_addition",
+        "reply": reply,
+        "stock_recheck": True,
+        "stock": {
+            "product": product_name,
+            "quantity": stock,
+            "unit": unit,
+        },
+    }
+    if price is not None:
+        result["stock"]["price"] = float(price)
+    return result
+
+
+def stock_acknowledgement_requested(text: str) -> bool:
+    """Recognize short acknowledgements after a completed stock action.
+
+    These messages should not accidentally fall into the sale/customer flow.
+    """
+    normalized = " ".join((text or "").lower().strip().split())
+    acknowledgements = {
+        "ok", "okay", "okay thanks", "thanks", "thank you",
+        "बर", "बरं", "ठीक", "ठीक आहे", "ठीक आहे धन्यवाद",
+        "हो ठीक", "हो ठीक आहे", "चालेल", "बरं मग",
+        "ओके", "धन्यवाद", "थँक्स",
+        "ठिक", "ठिक आहे",
+    }
+    return normalized in acknowledgements
+
+
+def stock_context_requested(text: str) -> bool:
+    t = " ".join((text or "").lower().split())
+    markers = (
+        "stock", "inventory", "add to stock", "in stock", "stock me",
+        "stock mein", "add product", "new product", "product in stock",
+        "product name", "product ka naam", "product ke naam",
+        "productच्या", "प्रोडक्शन", "प्रॉडक्शन", "प्रॉडक्ट", "उत्पादन",
+        "स्टॉक", "इन्वेंटरी", "साठा", "स्टॉकमध्ये", "स्टॉक में",
+        "उत्पादन जोडा", "उत्पाद जोड़", "सामान स्टॉक", "सामान जोडा",
+    )
+    return any(marker in t for marker in markers)
+
+def parse_stock_price(text: str) -> Optional[float]:
+    t = (text or "").lower().replace(",", "")
+    # Price-like expressions: ₹100, rs 100, price 100, at 100, per packet 100.
+    patterns = (
+        r"(?:₹|rs\.?|inr)\s*(\d+(?:\.\d+)?)",
+        r"(?:price|cost|at|per\s+(?:packet|packets|piece|pieces|kg|kilo|unit|units))\s*(?:is|of|:)?\s*(\d+(?:\.\d+)?)",
+        r"(?:कीमत|किंमत|भाव|दर)\s*(?:है|:)?\s*(\d+(?:\.\d+)?)",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, t)
+        if m:
+            return float(m.group(1))
+    # A pending price answer like "100" or "100 रुपये".
+    if re.fullmatch(r"(?:₹|rs\.?|inr)?\s*\d+(?:\.\d+)?\s*(?:रुपये|रुपए|रुपया|rupees|rs\.?|)?", t):
+        return parse_number(t)
+    return None
+
+
+def extract_stock_unit(text: str) -> Optional[str]:
+    t = (text or "").lower()
+    if re.search(r"\bpackets?\b|पैकेट|पॅकेट", t):
+        return "packet"
+    if re.search(r"\bpieces?\b|\bpcs?\b|पीस|नग", t):
+        return "piece"
+    if re.search(r"\b(?:kg|kilo|kilogram)s?\b|किलो|किलोग्राम", t):
+        return "kg"
+    return None
+
+
+def stock_number_from_message(text: str, expect_price: bool = False) -> Optional[float]:
+    if expect_price:
+        return parse_stock_price(text)
+    return parse_number(text)
+
+
+def save_last_stock_action(account_id: str, chat_id: Optional[str], action: dict) -> None:
+    if not chat_id:
+        return
+    db.chat_sessions.update_one(
+        {"account_id": account_id, "chat_id": chat_id},
+        {"$set": {"last_stock_action": action, "updated_at": datetime.now(timezone.utc)}}
+    )
+
+
+def clear_last_stock_action(account_id: str, chat_id: Optional[str]) -> None:
+    if not chat_id:
+        return
+    db.chat_sessions.update_one(
+        {"account_id": account_id, "chat_id": chat_id},
+        {"$unset": {"last_stock_action": ""}}
+    )
+
+
+def merge_stock_updates(draft: dict, updates: AIUpdate) -> dict:
+    if updates.stock_product:
+        draft["stock_product"] = updates.stock_product.strip()
+    if updates.stock_quantity is not None:
+        draft["stock_quantity"] = float(updates.stock_quantity)
+    if updates.stock_unit:
+        draft["stock_unit"] = updates.stock_unit.strip().lower()
+    if updates.stock_price is not None:
+        draft["stock_price"] = float(updates.stock_price)
+    return draft
+
+
+def normalize_stock_unit(unit: Optional[str]) -> Optional[str]:
+    if not unit:
+        return None
+    t = unit.lower().strip()
+    mapping = {
+        "packets": "packet", "packet": "packet", "पैकेट": "packet", "पॅकेट": "packet",
+        "pieces": "piece", "piece": "piece", "pcs": "piece", "pc": "piece", "पीस": "piece", "नग": "piece",
+        "kg": "kg", "kilo": "kg", "kilogram": "kg", "किलो": "kg", "किलोग्राम": "kg",
+    }
+    return mapping.get(t, t)
+
+
+def complete_stock_addition(request: AIRequest, language: str, draft: dict, product: dict, price: Optional[float] = None) -> dict:
+    quantity = float(draft.get("stock_quantity") or 0)
+    unit = normalize_stock_unit(draft.get("stock_unit") or product.get("unit"))
+    if quantity <= 0:
+        raise HTTPException(status_code=400, detail="Stock quantity must be greater than zero")
+    if price is not None and price < 0:
+        raise HTTPException(status_code=400, detail="Product price cannot be negative")
+
+    update_fields = {}
+    if unit and not product.get("unit"):
+        update_fields["unit"] = unit
+    if price is not None and not product.get("price"):
+        update_fields["price"] = float(price)
+    if update_fields:
+        db.products.update_one({"_id": product["_id"], "account_id": request.account_id}, {"$set": update_fields})
+
+    db.products.update_one(
+        {"_id": product["_id"], "account_id": request.account_id},
+        {"$inc": {"stock": quantity}}
+    )
+
+    action = {
+        "type": "stock_addition",
+        "product": product["name"],
+        "product_id": product["_id"],
+        "quantity": quantity,
+        "unit": unit,
+        "price": price,
+        "created_at": datetime.now(timezone.utc),
+    }
+    save_last_stock_action(request.account_id, request.chat_id, action)
+    clear_draft(request.account_id, request.chat_id)
+    return {
+        "intent": "stock_addition",
+        "reply": stock_added_reply(language, product["name"], quantity, unit, price),
+        "stock": {"product": product["name"], "quantity": quantity, "unit": unit, "price": price},
+    }
+
+
+def handle_stock_flow(request: AIRequest, language: str, existing_draft: dict, ai_result: Optional[AIResult] = None) -> Optional[dict]:
+    stock_draft = existing_draft if existing_draft.get("intent") == "stock_addition" else {}
+    stock_requested = bool(stock_draft) or stock_context_requested(request.text) or (ai_result is not None and ai_result.intent == "stock_addition")
+    if not stock_requested:
+        return None
+
+    draft = dict(stock_draft)
+    draft["intent"] = "stock_addition"
+
+    # Confirmation for a genuinely new product happens before creation.
+    pending_new = draft.get("pending_new_stock_product")
+    if pending_new:
+        if is_rejection(request.text):
+            draft.pop("pending_new_stock_product", None)
+            draft.pop("pending_stock_price", None)
+            draft["intent"] = "stock_addition"
+            draft["stock_product"] = None
+            save_draft(request.account_id, request.chat_id, draft)
+            return {"intent":"stock_addition","reply":stock_product_question(language),"draft":draft,"needs_clarification":True}
+
+        if is_confirmation(request.text):
+            pending = pending_new
+            draft.pop("pending_new_stock_product", None)
+            draft["stock_product_confirmed"] = True
+            if draft.get("stock_price") is None:
+                draft["pending_stock_price"] = True
+                save_draft(request.account_id, request.chat_id, draft)
+                return {"intent":"stock_addition","reply":stock_price_question(language, pending["product"], pending.get("unit")),"draft":draft,"needs_clarification":True,"missing_fields":["stock_price"]}
+        else:
+            # A correction or a complete restatement should be interpreted, not treated as a yes.
+            if ai_result is None:
+                return {"intent":"stock_addition","reply":stock_new_product_question(language, pending_new["product"], pending_new["quantity"], pending_new.get("unit")),"draft":draft,"needs_clarification":True,"new_stock_product_confirmation":True}
+
+    if draft.get("pending_stock_price"):
+        price = parse_stock_price(request.text)
+        if price is None and ai_result is not None:
+            price = ai_result.updates.stock_price
+        if price is None:
+            save_draft(request.account_id, request.chat_id, draft)
+            return {"intent":"stock_addition","reply":stock_price_question(language, draft.get("stock_product") or "this product", draft.get("stock_unit")),"draft":draft,"needs_clarification":True,"missing_fields":["stock_price"]}
+        draft["stock_price"] = float(price)
+        draft.pop("pending_stock_price", None)
+
+    if ai_result is not None and ai_result.intent == "stock_addition":
+        draft = merge_stock_updates(draft, ai_result.updates)
+
+    # Numeric follow-ups should fill the missing quantity, not become a product name.
+    if draft.get("stock_product") and draft.get("stock_quantity") is None:
+        qty = stock_number_from_message(request.text)
+        if qty is not None and qty > 0:
+            draft["stock_quantity"] = qty
+        unit = extract_stock_unit(request.text)
+        if unit:
+            draft["stock_unit"] = unit
+
+    if draft.get("stock_quantity") is not None and not draft.get("stock_unit"):
+        unit = extract_stock_unit(request.text)
+        if unit:
+            draft["stock_unit"] = unit
+
+    cleaned_product_name = clean_stock_product_name(draft.get("stock_product"))
+    if cleaned_product_name:
+        draft["stock_product"] = cleaned_product_name
+
+    product_name = (draft.get("stock_product") or "").strip()
+    quantity = draft.get("stock_quantity")
+    unit = normalize_stock_unit(draft.get("stock_unit"))
+    price = draft.get("stock_price")
+
+    if not product_name:
+        save_draft(request.account_id, request.chat_id, draft)
+        return {"intent":"stock_addition","reply":stock_product_question(language),"draft":draft,"needs_clarification":True,"missing_fields":["stock_product"]}
+
+    product = find_product(request.account_id, product_name)
+    if product:
+        draft["stock_product"] = product["name"]
+        if quantity is None:
+            save_draft(request.account_id, request.chat_id, draft)
+            return {"intent":"stock_addition","reply":stock_quantity_question(language, product["name"]),"draft":draft,"needs_clarification":True,"missing_fields":["stock_quantity"]}
+        draft["stock_quantity"] = float(quantity)
+        draft["stock_unit"] = unit or product.get("unit")
+        # Existing products do not need a new price.
+        return complete_stock_addition(request, language, draft, product, None)
+
+    # Unknown product: require quantity first, then confirmation, then price for creation.
+    if quantity is None:
+        save_draft(request.account_id, request.chat_id, draft)
+        return {"intent":"stock_addition","reply":stock_quantity_question(language, product_name),"draft":draft,"needs_clarification":True,"missing_fields":["stock_quantity"]}
+
+    draft["stock_unit"] = unit
+    draft["stock_quantity"] = float(quantity)
+
+    if not draft.get("stock_product_confirmed"):
+        draft["pending_new_stock_product"] = {"product": product_name, "quantity": float(quantity), "unit": unit}
+        save_draft(request.account_id, request.chat_id, draft)
+        return {"intent":"stock_addition","reply":stock_new_product_question(language, product_name, float(quantity), unit),"draft":draft,"needs_clarification":True,"new_stock_product_confirmation":True}
+
+    if price is None:
+        draft["pending_stock_price"] = True
+        save_draft(request.account_id, request.chat_id, draft)
+        return {"intent":"stock_addition","reply":stock_price_question(language, product_name, unit),"draft":draft,"needs_clarification":True,"missing_fields":["stock_price"]}
+
+    data = {
+        "account_id": request.account_id,
+        "name": product_name,
+        "price": float(price),
+        "stock": float(quantity),
+        "unit": unit,
+    }
+    result = db.products.insert_one(data)
+    data["_id"] = result.inserted_id
+    action = {"type":"stock_addition","product":data["name"],"product_id":data["_id"],"quantity":float(quantity),"unit":unit,"price":float(price),"created_at":datetime.now(timezone.utc)}
+    save_last_stock_action(request.account_id, request.chat_id, action)
+    clear_draft(request.account_id, request.chat_id)
+    return {"intent":"stock_addition","reply":stock_added_reply(language, data["name"], float(quantity), unit, float(price)),"stock":{"product":data["name"],"quantity":float(quantity),"unit":unit,"price":float(price)}}
+
+
+def handle_completed_stock_correction(request: AIRequest, language: str, existing_draft: dict) -> Optional[dict]:
+    action = existing_draft.get("last_stock_action")
+    if not action or action.get("type") != "stock_addition":
+        return None
+    text = request.text.strip()
+    if not is_correction_message(text):
+        return None
+    product = db.products.find_one({"_id": action.get("product_id"), "account_id": request.account_id})
+    if not product:
+        return None
+    # Use Gemini result for corrected quantity/price/product when available. This function only handles an explicit recent correction.
+    return {"_correction_action": action, "_product": product}
+
+
 def new_customer_question(language: str, name: str) -> str:
     language = normalize_language(language)
 
@@ -383,49 +828,51 @@ def is_greeting(text: str) -> bool:
 
 
 def parse_number(text: str) -> Optional[float]:
-    match = re.search(
-        r"(?<!\d)(\d+(?:\.\d+)?)(?!\d)",
-        text.replace(",", "")
-    )
-
-    if not match:
-        number_words = {
-            "शून्य": 0,
-            "सौ": 100,
-            "सो": 100,
-            "एक सौ": 100,
-            "दो सौ": 200,
-            "तीन सौ": 300,
-            "चार सौ": 400,
-            "पांच सौ": 500,
-            "पाँच सौ": 500,
-            "एक": 1,
-            "दो": 2,
-            "तीन": 3,
-            "चार": 4,
-            "पांच": 5,
-            "पाँच": 5,
-        }
-
-        normalized = " ".join(
-            text.lower().strip().split()
-        )
-
-        for phrase, value in sorted(
-            number_words.items(),
-            key=lambda item: len(item[0]),
-            reverse=True
-        ):
-            if phrase in normalized:
-                return float(value)
-
+    value = " ".join((text or "").lower().strip().split())
+    if not value:
         return None
 
-    try:
-        return float(match.group(1))
-    except ValueError:
-        return None
+    match = re.search(r"(?<!\d)(\d+(?:\.\d+)?)(?!\d)", value.replace(",", ""))
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            pass
 
+    # Speech-to-text often turns 50 into "five zero", "फाईव्ह झिरो", etc.
+    # Handle common spoken digit sequences without requiring Gemini.
+    digit_words = {
+        "zero": "0", "oh": "0", "o": "0", "one": "1", "two": "2",
+        "three": "3", "four": "4", "five": "5", "six": "6",
+        "seven": "7", "eight": "8", "nine": "9",
+        "शून्य": "0", "जीरो": "0", "झिरो": "0", "एक": "1",
+        "दो": "2", "तीन": "3", "चार": "4", "पांच": "5", "पाँच": "5",
+        "सहा": "6", "सात": "7", "आठ": "8", "नऊ": "9",
+        "फाईव्ह": "5", "फाइव": "5", "फाइव्ह": "5",
+        "वन": "1", "टू": "2", "थ्री": "3", "फोर": "4",
+        "सिक्स": "6", "सेव्हन": "7", "एट": "8", "नाईन": "9",
+        "नाइन": "9",
+    }
+
+    tokens = value.replace("-", " ").split()
+    if tokens and all(token in digit_words for token in tokens):
+        digits = "".join(digit_words[token] for token in tokens)
+        try:
+            return float(digits)
+        except ValueError:
+            return None
+
+    number_words = {
+        "शून्य": 0, "सौ": 100, "सो": 100, "एक सौ": 100,
+        "दो सौ": 200, "तीन सौ": 300, "चार सौ": 400,
+        "पांच सौ": 500, "पाँच सौ": 500, "एक": 1, "दो": 2,
+        "तीन": 3, "चार": 4, "पांच": 5, "पाँच": 5,
+    }
+    for phrase, number in sorted(number_words.items(), key=lambda item: len(item[0]), reverse=True):
+        if phrase in value:
+            return float(number)
+
+    return None
 
 def is_amount_answer(text: str) -> bool:
     cleaned = text.lower().strip()
@@ -653,6 +1100,55 @@ def is_confirmation(text: str) -> bool:
         pattern in normalized
         for pattern in positive_patterns
     )
+
+
+
+
+def extract_customer_correction_name(text: str, current_name: str = "") -> Optional[str]:
+    """Extract an explicitly corrected customer name from a short follow-up.
+
+    This is intentionally conservative: it handles common natural phrases such as
+    'मी अमित वर्मा', 'कस्टमरचं नाव अमित वर्मा आहे', and 'customer name is Amit Verma'.
+    A single surname can replace the surname of the currently proposed customer.
+    """
+    raw = " ".join((text or "").strip().split())
+    if not raw:
+        return None
+
+    # Strip common punctuation without destroying Devanagari text.
+    cleaned = re.sub(r"[,:;.!?।]+", " ", raw)
+    cleaned = " ".join(cleaned.split())
+
+    patterns = (
+        r"(?:कस्टमर|ग्राहक|customer)(?:[^\n]{0,30})?(?:नाव|नाम)\s*(?:है|आहे|is|=)?\s*(.+)$",
+        r"(?:कस्टमर(?:चे|चं|चा|का)?\s*)?(?:नाव|नाम)\s+(?:है|आहे)?\s*(.+)$",
+        r"(?:customer|customer name|name)\s*(?:is|=)?\s*(.+)$",
+        r"^(?:मी|मेरा नाम|माझं नाव|माझे नाव|my name is|i am)\s+(.+)$",
+        r"^(?:customer is|customer name is)\s+(.+)$",
+    )
+
+    for pattern in patterns:
+        match = re.search(pattern, cleaned, flags=re.IGNORECASE)
+        if match:
+            candidate = match.group(1).strip()
+            candidate = re.sub(r"^(?:है|आहे)\s+", "", candidate, flags=re.IGNORECASE).strip()
+            if candidate and len(candidate) >= 2:
+                return candidate
+
+    # If the current proposed name has a surname and the user only says the
+    # surname, treat it as a surname correction instead of repeating the old name.
+    current_parts = current_name.split()
+    candidate_parts = cleaned.split()
+    if len(current_parts) >= 2 and len(candidate_parts) == 1:
+        surname = candidate_parts[0]
+        if len(surname) >= 2:
+            return f"{current_parts[0]} {surname}"
+
+    # A short two-word name is itself a strong explicit replacement.
+    if len(candidate_parts) == 2 and all(len(part) >= 2 for part in candidate_parts):
+        return cleaned
+
+    return None
 
 
 def is_product_correction(text: str) -> bool:
@@ -1574,7 +2070,16 @@ the customer list, set:
 
 new_customer = true
 
-and provide the canonical customer name.
+and extract the customer's name exactly as the shopkeeper stated it.
+
+IMPORTANT NAME-PRESERVATION RULE:
+For a NEW customer, NEVER translate, transliterate, romanize,
+anglicize, normalize, or replace the customer's name with an
+English/Hindi/Marathi equivalent. Preserve the actual name/script
+from CURRENT MESSAGE. For example, if the shopkeeper says
+"अमित वर्मा", the customer field must be "अमित वर्मा", not
+"Amit Verma" and not another inferred name. If the shopkeeper says
+"Amit Verma", keep "Amit Verma".
 
 Preserve explicitly stated names accurately.
 
@@ -1614,6 +2119,14 @@ If the product reference is ambiguous, ask instead of guessing.
 If a product is genuinely not in EXISTING PRODUCTS, set:
 
 new_product = true
+
+IMPORTANT NEW-PRODUCT NAME RULE:
+For a NEW product, preserve the product name exactly as the
+shopkeeper stated it in CURRENT MESSAGE. NEVER translate or
+transliterate it merely because the response language is Hindi,
+Marathi, or English. For example, "ऑल आऊट" must remain "ऑल आऊट"
+when it is a new product; "All Out" must remain "All Out" when that
+is what the shopkeeper said.
 
 Do NOT silently invent a product.
 
@@ -1800,6 +2313,77 @@ The backend validates your proposed customer/product against MongoDB
 and performs the actual database operation.
 
 ============================================================
+STOCK ADDITION — IMPORTANT
+============================================================
+
+Stock addition is a separate business action from a customer sale.
+Never ask for a customer name when the shopkeeper is adding stock.
+
+If the shopkeeper says:
+
+"add a new product handkerchiefs in stock"
+"50 packets of handkerchiefs"
+"स्टॉक में 20 पैकेट चाय पत्ती डालो"
+
+use:
+intent = stock_addition
+
+and put the meaning into these update fields:
+stock_product
+stock_quantity
+stock_unit
+stock_price
+
+The product field MUST contain only the actual product name.
+Do NOT include instruction words such as:
+- add
+- product name
+- in stock
+- stock
+- packets
+- pieces
+- price
+- we have to
+
+For example:
+
+"add product name tea leaves, 12 packets"
+
+means:
+stock_product = "Tea Leaves"
+stock_quantity = 12
+stock_unit = "packet"
+
+NOT:
+"We Have A Product Name Tea Leaves"
+
+"packets of handkerchiefs" means:
+stock_product = "Handkerchiefs"
+stock_unit = "packet"
+
+If the current stock draft already knows the product, then:
+"50 packets"
+should fill quantity = 50 and unit = packet without changing the
+product to "Packets".
+
+A unit is NEVER a product name.
+
+A one-shot message such as:
+"add 50 packets of handkerchiefs at 100 each"
+should extract all four values.
+
+If the price is not stated for a genuinely new product, do not invent
+it. The backend will ask for the price before creating the product.
+
+Existing products can receive additional stock without asking for
+customer information.
+
+Corrections to a stock draft modify the stock draft. Do not switch to
+a sale merely because the word "customer" appears in a noisy speech
+transcript.
+
+============================================================
+============================================================
 OUTPUT RULES
 ============================================================
 
@@ -1824,32 +2408,35 @@ If the message is unrelated to the shop and no useful business
 action exists, use intent = unknown and give a natural short reply.
 """
 
-    try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=AIResult
-            )
-        )
+    last_error = None
+    models_to_try = [GEMINI_MODEL, "gemini-3.8-flash", "gemini-3.7-flash"]
 
-        return AIResult.model_validate_json(
-            response.text
-        )
+    for model_name in models_to_try:
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=AIResult
+                    )
+                )
+                return AIResult.model_validate_json(response.text)
+            except Exception as e:
+                last_error = e
+                error_text = str(e)
+                if "503" not in error_text and "UNAVAILABLE" not in error_text:
+                    raise
+                if attempt == 0:
+                    time.sleep(1.5)
 
-    except Exception as e:
-        print(
-            f"Gemini error: {e}"
-        )
-
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "AI service is temporarily unavailable. "
-                "Please try again."
-            )
-        )
+    e = last_error
+    print(f"Gemini error: {e}")
+    raise HTTPException(
+        status_code=503,
+        detail="AI service is temporarily unavailable. Please try again."
+    )
 
 
 # ============================================================
@@ -1877,6 +2464,9 @@ def normalize_product_from_text(
             )
         )
     )
+
+    if ai_result.intent == "stock_addition":
+        return normalize_stock_ai_result(ai_result)
 
     if not lays_mentioned:
         return ai_result
@@ -1970,6 +2560,14 @@ def process_ai(request: AIRequest):
 
     if is_greeting(text):
 
+        if existing_draft and existing_draft.get("intent") == "stock_addition":
+            return {
+                "intent": "greeting",
+                "reply": language_text(language, "greeting"),
+                "draft": existing_draft,
+                "needs_clarification": True
+            }
+
         if existing_draft:
 
             missing = validate_draft(
@@ -2004,6 +2602,170 @@ def process_ai(request: AIRequest):
             ),
             "needs_clarification": False
         }
+
+    # --------------------------------------------------------
+    # STOCK RECHECK — NEVER FALL THROUGH TO CUSTOMER/SALE
+    # --------------------------------------------------------
+    if stock_recheck_requested(text):
+        last_action = get_last_stock_action(
+            request.account_id,
+            request.chat_id
+        )
+        if last_action and last_action.get("product"):
+            canonical_name = clean_stock_product_name(last_action.get("product")) or last_action.get("product")
+            product = find_product(request.account_id, canonical_name)
+            if product:
+                return stock_recheck_reply(language, last_action, product)
+
+            # If the last action contains a stale/wrong AI-generated name,
+            # do not invent a customer or sale. Check the exact stored name once.
+            product = db.products.find_one({
+                "account_id": request.account_id,
+                "name": last_action.get("product")
+            })
+            return stock_recheck_reply(language, last_action, product)
+
+        # No recent stock action: keep the conversation in stock context.
+        return {
+            "intent": "stock_addition",
+            "reply": (
+                "मला अलीकडील स्टॉक अॅक्शन सापडली नाही." if language == "mr"
+                else "मुझे हाल की स्टॉक कार्रवाई नहीं मिली।" if language == "hi"
+                else "I couldn't find a recent stock action to re-check."
+            ),
+            "needs_clarification": True,
+            "stock_recheck": True
+        }
+
+    # --------------------------------------------------------
+    # STOCK ACKNOWLEDGEMENT — DO NOT FALL THROUGH TO SALE
+    # --------------------------------------------------------
+    # After a stock action is completed, a short acknowledgement such as
+    # "बर" / "ठीक आहे" is just conversational. It must not be interpreted
+    # as the start of a sale and trigger "ग्राहकाचे नाव सांगा".
+    if (
+        not existing_draft
+        and stock_acknowledgement_requested(text)
+        and get_last_stock_action(request.account_id, request.chat_id)
+    ):
+        if language == "mr":
+            reply = "ठीक आहे 👍 पुढे काय करायचे आहे?"
+        elif language == "hi":
+            reply = "ठीक है 👍 अब आगे क्या करना है?"
+        else:
+            reply = "Okay 👍 What would you like to do next?"
+        return {
+            "intent": "stock_addition",
+            "reply": reply,
+            "needs_clarification": False,
+        }
+
+    # --------------------------------------------------------
+    # STOCK ADDITION — HARD ISOLATION FROM SALES
+    # --------------------------------------------------------
+    # Once a chat is inside a stock draft, NEVER allow a Gemini
+    # misclassification (e.g. a number as "sale") to fall through
+    # into customer/sale logic. Local stock state owns this branch.
+    if existing_draft.get("intent") == "stock_addition":
+        customer_names, product_names = get_shop_entities(
+            request.account_id
+        )
+        recent_messages = get_recent_chat_context(
+            request.account_id,
+            request.chat_id
+        )
+
+        # Handle confirmations, price replies and simple numeric/unit
+        # follow-ups locally first. This is especially important for
+        # voice transcripts such as "five zero" / "फाईव्ह झिरो".
+        if (
+            existing_draft.get("pending_new_stock_product")
+            or existing_draft.get("pending_stock_price")
+            or existing_draft.get("stock_product")
+        ):
+            local_result = handle_stock_flow(
+                request,
+                language,
+                existing_draft
+            )
+            if local_result and (
+                not local_result.get("missing_fields")
+                or local_result.get("intent") == "stock_addition"
+            ):
+                # If local parsing actually consumed the message, stop.
+                # For a missing product name, Gemini gets one chance below.
+                if (
+                    existing_draft.get("stock_product")
+                    or existing_draft.get("pending_new_stock_product")
+                    or existing_draft.get("pending_stock_price")
+                    or "stock_quantity" in local_result.get("draft", {})
+                ):
+                    return local_result
+
+        # Let Gemini interpret natural-language product names/details, but
+        # keep the result inside stock flow regardless of its intent label.
+        stock_ai_result = call_gemini(
+            request,
+            existing_draft,
+            customer_names,
+            product_names,
+            recent_messages
+        )
+        stock_ai_result = normalize_product_from_text(
+            request.text,
+            stock_ai_result
+        )
+        stock_ai_result = normalize_stock_ai_result(stock_ai_result)
+
+        stock_result = handle_stock_flow(
+            request,
+            language,
+            existing_draft,
+            stock_ai_result
+        )
+        if stock_result:
+            return stock_result
+
+        # Absolute guard: an active stock draft must never reach the sale
+        # branch, even if Gemini returned an unrelated intent.
+        return {
+            "intent": "stock_addition",
+            "reply": stock_product_question(language),
+            "draft": existing_draft,
+            "needs_clarification": True,
+            "missing_fields": ["stock_product"],
+        }
+
+    # No active stock draft: an explicit stock request starts stock flow.
+    if stock_context_requested(text):
+        customer_names, product_names = get_shop_entities(
+            request.account_id
+        )
+        recent_messages = get_recent_chat_context(
+            request.account_id,
+            request.chat_id
+        )
+        stock_ai_result = call_gemini(
+            request,
+            existing_draft,
+            customer_names,
+            product_names,
+            recent_messages
+        )
+        stock_ai_result = normalize_product_from_text(
+            request.text,
+            stock_ai_result
+        )
+        stock_ai_result = normalize_stock_ai_result(stock_ai_result)
+        if stock_ai_result.intent == "stock_addition":
+            result = handle_stock_flow(
+                request,
+                language,
+                existing_draft,
+                stock_ai_result
+            )
+            if result:
+                return result
 
     # --------------------------------------------------------
     # RESTORE CONFIRMATION STATE
@@ -2297,6 +3059,37 @@ def process_ai(request: AIRequest):
             {}
         ).get("type") == "customer"
     ):
+
+        # A customer-name correction must update the active draft immediately.
+        # Do not keep asking the old confirmation question when the shopkeeper
+        # says things such as "मी अमित वर्मा" or simply "वर्मा".
+        corrected_customer = extract_customer_correction_name(
+            text,
+            existing_draft.get("customer", "")
+        )
+        if corrected_customer and not is_confirmation(text) and not is_rejection(text):
+            existing_draft["customer"] = corrected_customer
+            existing_draft.pop("customer_rejected", None)
+            existing_draft["new_customer_confirmed"] = False
+            existing_draft["new_customer"] = not bool(
+                find_customer(request.account_id, corrected_customer)
+            )
+            existing_draft["pending_new_customer"] = True
+            set_confirmation(existing_draft, "customer")
+            save_draft(
+                request.account_id,
+                request.chat_id,
+                existing_draft
+            )
+            return {
+                "reply": new_customer_question(
+                    language,
+                    corrected_customer
+                ),
+                "draft": existing_draft,
+                "needs_clarification": True,
+                "new_customer_confirmation": True,
+            }
 
         # Rejection BEFORE confirmation.
         if is_rejection(text):
@@ -3282,6 +4075,39 @@ def process_ai(request: AIRequest):
                 "missing_fields": [
                     "customer"
                 ]
+            }
+
+    # --------------------------------------------------------
+    # CUSTOMER WAS REJECTED — NAME CORRECTION
+    # --------------------------------------------------------
+
+    if draft.get("customer_rejected"):
+        corrected_customer = extract_customer_correction_name(
+            text,
+            draft.get("customer", "")
+        )
+        if corrected_customer:
+            draft["customer"] = corrected_customer
+            draft.pop("customer_rejected", None)
+            draft["new_customer_confirmed"] = False
+            draft["new_customer"] = not bool(
+                find_customer(request.account_id, corrected_customer)
+            )
+            draft["pending_new_customer"] = True
+            set_confirmation(draft, "customer")
+            save_draft(
+                request.account_id,
+                request.chat_id,
+                draft
+            )
+            return {
+                "reply": new_customer_question(
+                    language,
+                    corrected_customer
+                ),
+                "draft": draft,
+                "needs_clarification": True,
+                "new_customer_confirmation": True,
             }
 
     # --------------------------------------------------------

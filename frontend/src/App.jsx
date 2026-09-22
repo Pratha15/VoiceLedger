@@ -35,10 +35,16 @@ import mandalaSvg from "./assets/decorations/mandala.svg";
 import floralWatermark from "./assets/decorations/floral-watermark.svg";
 
 import DashboardPages from "./screens/DashboardPages.jsx";
+import {
+  displayCustomerName as localizedCustomerName,
+  displayProductName as localizedProductName,
+} from "./utils/displayNames.js";
 
 const API = "http://127.0.0.1:8000";
 
 const displayProductName = (name, language) => {
+  const localized = localizedProductName(name, language);
+  if (localized !== name || language === "en") return localized;
   const normalized = (name || "").toLowerCase();
   if (normalized === "rice") return language === "hi" ? "चावल" : language === "mr" ? "तांदूळ" : "Rice";
   if (normalized === "sugar") return language === "hi" ? "चीनी" : language === "mr" ? "साखर" : "Sugar";
@@ -47,6 +53,8 @@ const displayProductName = (name, language) => {
 };
 
 const displayCustomerName = (name, language) => {
+  const localized = localizedCustomerName(name, language);
+  if (localized !== name || language === "en") return localized;
   const normalized = (name || "").trim().toLowerCase();
   const names = {
     "amit verma": { hi: "अमित वर्मा", mr: "अमित वर्मा" },
@@ -434,6 +442,15 @@ function App({ user, shopData, onLogout, onLanguageChange }) {
     fetchTransactions();
   }, []);
 
+  useEffect(() => {
+    const refreshDashboard = () => {
+      fetchSummary();
+      fetchTransactions();
+    };
+    window.addEventListener("transaction-updated", refreshDashboard);
+    return () => window.removeEventListener("transaction-updated", refreshDashboard);
+  }, []);
+
   /* =========================================================
      DATE / TIME
   ========================================================= */
@@ -662,11 +679,16 @@ function App({ user, shopData, onLogout, onLanguageChange }) {
     const recognition =
       new SpeechRecognition();
 
+    // The Web Speech API accepts one recognition locale per listening turn.
+    // Auto uses the browser locale as a stable starting point; the backend
+    // then detects each transcript and responds in one language.
     recognition.lang =
       language === "hi"
         ? "hi-IN"
         : language === "mr"
         ? "mr-IN"
+        : language === "auto" && /^(hi|mr)-/i.test(navigator.language)
+        ? navigator.language
         : "en-IN";
 
     recognition.continuous = false;

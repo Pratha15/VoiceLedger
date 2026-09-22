@@ -1,9 +1,13 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional
 
 
 class Customer(BaseModel):
+
     account_id: str
+
     name: str
+
     phone: Optional[str] = None
-    aliases: List[str] = []
+
+    is_active: bool = True

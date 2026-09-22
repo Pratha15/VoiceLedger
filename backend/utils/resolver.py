@@ -26,6 +26,7 @@ def find_customer(account_id: str, name: str):
 
     return db.customers.find_one({
         "account_id": account_id,
+        "is_active": {"$ne": False},
         "name": {
             "$regex": pattern,
             "$options": "i"

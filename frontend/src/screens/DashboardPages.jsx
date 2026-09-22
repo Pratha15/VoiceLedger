@@ -1,4 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  displayCustomerName as localizedCustomerName,
+  displayProductName as localizedProductName,
+} from "../utils/displayNames.js";
 import "./DashboardPages.css";
 
 const API = "http://127.0.0.1:8000";
@@ -18,6 +22,13 @@ const translations = {
     credit: "उधार",
     partial: "आंशिक",
     pending: "बाकी",
+    sales: "बिक्री",
+    collected: "वसूली",
+    today: "आज",
+    yesterday: "कल",
+    thisWeek: "इस सप्ताह",
+    thisMonth: "इस महीने",
+    all: "सभी",
 
     customers: "ग्राहक",
     customersSub: "अपने ग्राहकों और उनकी जानकारी को संभालें",
@@ -29,8 +40,6 @@ const translations = {
     customerNamePlaceholder: "जैसे रमेश कुमार",
     phone: "फ़ोन नंबर",
     optional: "वैकल्पिक",
-    aliases: "उपनाम",
-    aliasesPlaceholder: "रमेश, रमेश जी, रमेश भाई",
     adding: "जोड़ा जा रहा है...",
     customerAdded: "ग्राहक सफलतापूर्वक जोड़ दिया गया!",
     enterCustomerName: "कृपया ग्राहक का नाम दर्ज करें।",
@@ -40,6 +49,11 @@ const translations = {
     addFirstCustomer:
       "अपना पहला ग्राहक जोड़ें और उनका खाता संभालना शुरू करें।",
     view: "देखें →",
+    deleteCustomer: "ग्राहक हटाएँ",
+    deleteConfirm: "ग्राहक हटाएँ?",
+    deletePending:
+      "इस ग्राहक पर ₹{amount} बाकी है। क्या आप इसे हटाना चाहते हैं?",
+    customerDeleted: "ग्राहक को सक्रिय सूची से हटा दिया गया।",
 
     customerLedger: "ग्राहक खाता",
     loading: "लोड हो रहा है...",
@@ -62,8 +76,6 @@ const translations = {
     stockPlaceholder: "जैसे 50",
     unit: "इकाई",
     unitPlaceholder: "किलो / लीटर / पीस",
-    productAliases: "उपनाम",
-    productAliasesPlaceholder: "Rice, Chawal, चावल",
     productAdded: "सामान सफलतापूर्वक जोड़ दिया गया!",
     enterProductName: "कृपया सामान का नाम दर्ज करें।",
     enterProductPrice: "कृपया सामान की कीमत दर्ज करें।",
@@ -72,6 +84,15 @@ const translations = {
     noProducts: "कोई सामान नहीं मिला",
     addProductsInventory:
       "अपनी इन्वेंटरी संभालना शुरू करने के लिए सामान जोड़ें।",
+    deleteProduct: "सामान हटाएँ",
+    deleteProductConfirm: "सामान हटाएँ?",
+    deleteProductMessage:
+      "क्या आप {name} को सक्रिय स्टॉक से हटाना चाहते हैं?",
+    productDeleted: "सामान सक्रिय स्टॉक से हटा दिया गया।",
+    confirm: "पुष्टि करें",
+
+    paidConfirm: "₹{amount} को भुगतान किया हुआ चिह्नित करें?",
+    paymentUpdated: "भुगतान अपडेट हो गया।",
 
     calendar: "कैलेंडर",
     calendarSub: "तारीख के अनुसार लेन-देन देखें",
@@ -135,6 +156,13 @@ const translations = {
     credit: "उधार",
     partial: "अंशतः",
     pending: "बाकी",
+    sales: "विक्री",
+    collected: "वसूल",
+    today: "आज",
+    yesterday: "काल",
+    thisWeek: "या आठवड्यात",
+    thisMonth: "या महिन्यात",
+    all: "सर्व",
 
     customers: "ग्राहक",
     customersSub: "तुमचे ग्राहक आणि त्यांची माहिती सांभाळा",
@@ -146,8 +174,6 @@ const translations = {
     customerNamePlaceholder: "उदा. रमेश कुमार",
     phone: "फोन नंबर",
     optional: "पर्यायी",
-    aliases: "उपनावे",
-    aliasesPlaceholder: "रमेश, रमेश जी, रमेश भाऊ",
     adding: "जोडत आहे...",
     customerAdded: "ग्राहक यशस्वीरित्या जोडला!",
     enterCustomerName: "कृपया ग्राहकाचे नाव टाका.",
@@ -157,6 +183,11 @@ const translations = {
     addFirstCustomer:
       "तुमचा पहिला ग्राहक जोडा आणि त्यांचे खाते सांभाळायला सुरुवात करा.",
     view: "पहा →",
+    deleteCustomer: "ग्राहक हटवा",
+    deleteConfirm: "ग्राहक हटवायचा?",
+    deletePending:
+      "या ग्राहकाकडे ₹{amount} बाकी आहे. हटवायचे का?",
+    customerDeleted: "ग्राहक सक्रिय यादीतून काढला आहे.",
 
     customerLedger: "ग्राहक खाते",
     loading: "लोड होत आहे...",
@@ -179,8 +210,6 @@ const translations = {
     stockPlaceholder: "उदा. 50",
     unit: "एकक",
     unitPlaceholder: "किलो / लिटर / नग",
-    productAliases: "उपनावे",
-    productAliasesPlaceholder: "Rice, Chawal, तांदूळ",
     productAdded: "सामान यशस्वीरित्या जोडले!",
     enterProductName: "कृपया सामानाचे नाव टाका.",
     enterProductPrice: "कृपया सामानाची किंमत टाका.",
@@ -189,6 +218,15 @@ const translations = {
     noProducts: "सामान सापडले नाही",
     addProductsInventory:
       "तुमची इन्व्हेंटरी सांभाळण्यासाठी सामान जोडा.",
+    deleteProduct: "सामान हटवा",
+    deleteProductConfirm: "सामान हटवायचे?",
+    deleteProductMessage:
+      "{name} सक्रिय स्टॉकमधून हटवायचे आहे का?",
+    productDeleted: "सामान सक्रिय स्टॉकमधून काढले आहे.",
+    confirm: "पुष्टी करा",
+
+    paidConfirm: "₹{amount} भरले म्हणून चिन्हांकित करायचे?",
+    paymentUpdated: "पेमेंट अपडेट झाले.",
 
     calendar: "कॅलेंडर",
     calendarSub: "तारखेनुसार व्यवहार पहा",
@@ -252,6 +290,13 @@ const translations = {
     credit: "Credit",
     partial: "Partial",
     pending: "Pending",
+    sales: "Sales",
+    collected: "Collected",
+    today: "Today",
+    yesterday: "Yesterday",
+    thisWeek: "This Week",
+    thisMonth: "This Month",
+    all: "All",
 
     customers: "Customers",
     customersSub: "Manage your customers and their details",
@@ -263,8 +308,6 @@ const translations = {
     customerNamePlaceholder: "e.g. Ramesh Kumar",
     phone: "Phone Number",
     optional: "Optional",
-    aliases: "Aliases",
-    aliasesPlaceholder: "Ramesh, Ramesh ji, Ramesh bhai",
     adding: "Adding...",
     customerAdded: "Customer added successfully!",
     enterCustomerName: "Please enter customer name.",
@@ -274,6 +317,11 @@ const translations = {
     addFirstCustomer:
       "Add your first customer to start managing their khata.",
     view: "View →",
+    deleteCustomer: "Delete Customer",
+    deleteConfirm: "Delete this customer?",
+    deletePending:
+      "This customer has ₹{amount} pending. Are you sure you want to delete this customer?",
+    customerDeleted: "Customer removed from the active list.",
 
     customerLedger: "Customer ledger",
     loading: "Loading...",
@@ -296,8 +344,6 @@ const translations = {
     stockPlaceholder: "e.g. 50",
     unit: "Unit",
     unitPlaceholder: "kg / litre / piece",
-    productAliases: "Aliases",
-    productAliasesPlaceholder: "Rice, Chawal, चावल",
     productAdded: "Product added successfully!",
     enterProductName: "Please enter product name.",
     enterProductPrice: "Please enter product price.",
@@ -306,6 +352,15 @@ const translations = {
     noProducts: "No products found",
     addProductsInventory:
       "Add products to start managing your inventory.",
+    deleteProduct: "Delete Product",
+    deleteProductConfirm: "Delete this product?",
+    deleteProductMessage:
+      "Do you want to remove {name} from your active stock?",
+    productDeleted: "Product removed from active stock.",
+    confirm: "Confirm",
+
+    paidConfirm: "Mark ₹{amount} as paid?",
+    paymentUpdated: "Payment updated.",
 
     calendar: "Calendar",
     calendarSub: "View transactions by date",
@@ -361,43 +416,245 @@ const translations = {
 };
 
 function getTranslations(language) {
-  return translations[language] || translations.en;
-}
-
-function displayProductName(name, language) {
-  const normalized = (name || "").toLowerCase();
-  if (normalized === "rice") {
-    return language === "hi" ? "चावल" : language === "mr" ? "तांदूळ" : "Rice";
-  }
-  if (normalized === "sugar") {
-    return language === "hi" ? "चीनी" : language === "mr" ? "साखर" : "Sugar";
-  }
-  if (normalized === "chips") {
-    return language === "hi" || language === "mr" ? "चिप्स" : "Chips";
-  }
-  return name;
-}
-
-function displayCustomerName(name, language) {
-  const normalized = (name || "").trim().toLowerCase();
-  const names = {
-    "amit verma": { hi: "अमित वर्मा", mr: "अमित वर्मा" },
-    "amit kumar": { hi: "अमित कुमार", mr: "अमित कुमार" },
-    "pratha": { hi: "प्रथा", mr: "प्रथा" },
-    "shivam": { hi: "शिवम", mr: "शिवम" },
-    "siyad shukla": { hi: "सियाद शुक्ला", mr: "सियाद शुक्ला" },
-  };
-  return names[normalized]?.[language] || name;
+  const selected = language === "auto" ? "en" : language;
+  return translations[selected] || translations.en;
 }
 
 /* =========================================================
-   COMMON HEADER
+   HELPERS
 ========================================================= */
 
-function PageHeader({ title, subtitle, onBack }) {
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString("en-IN");
+}
+
+function getIndiaDate() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+  }).format(new Date());
+}
+
+function addDaysToDateString(dateString, amount) {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  const date = new Date(
+    Date.UTC(year, month - 1, day)
+  );
+
+  date.setUTCDate(date.getUTCDate() + amount);
+
+  return date.toISOString().slice(0, 10);
+}
+
+function getWeekStart(dateString) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(
+    Date.UTC(year, month - 1, day)
+  );
+
+  const dayOfWeek = date.getUTCDay();
+
+  return addDaysToDateString(
+    dateString,
+    -dayOfWeek
+  );
+}
+
+function getWeekEnd(dateString) {
+  return addDaysToDateString(
+    getWeekStart(dateString),
+    6
+  );
+}
+
+function getMonthStart(dateString) {
+  return `${dateString.slice(0, 7)}-01`;
+}
+
+function getMonthEnd(dateString) {
+  const [year, month] = dateString
+    .split("-")
+    .map(Number);
+
+  const date = new Date(
+    Date.UTC(year, month, 0)
+  );
+
+  return date.toISOString().slice(0, 10);
+}
+
+function getDateQuery(dateFilter, selectedDate) {
+  if (dateFilter === "all") {
+    return "";
+  }
+
+  if (dateFilter === "today") {
+    return `date=${selectedDate}`;
+  }
+
+  if (dateFilter === "yesterday") {
+    const yesterday = addDaysToDateString(
+      selectedDate,
+      -1
+    );
+
+    return `date=${yesterday}`;
+  }
+
+  if (dateFilter === "week") {
+    return `start_date=${getWeekStart(
+      selectedDate
+    )}&end_date=${getWeekEnd(selectedDate)}`;
+  }
+
+  if (dateFilter === "month") {
+    return `start_date=${getMonthStart(
+      selectedDate
+    )}&end_date=${getMonthEnd(selectedDate)}`;
+  }
+
+  return "";
+}
+
+function getLocalizedProductName(name, language) {
+  return localizedProductName(
+    name,
+    language
+  );
+}
+
+function getLocalizedCustomerName(name, language) {
+  return localizedCustomerName(
+    name,
+    language
+  );
+}
+
+function matchesSearch(value, search) {
+  return String(value || "")
+    .toLowerCase()
+    .includes(search.toLowerCase());
+}
+
+/* =========================================================
+   CONFIRMATION MODAL
+========================================================= */
+
+function ConfirmationModal({
+  title,
+  message,
+  cancelLabel,
+  confirmLabel,
+  busy,
+  error,
+  onCancel,
+  onConfirm,
+}) {
+  const confirmRef = useRef(null);
+
+  useEffect(() => {
+    confirmRef.current?.focus();
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape" && !busy) {
+        onCancel();
+      }
+    };
+
+    window.addEventListener(
+      "keydown",
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+    };
+  }, [busy, onCancel]);
+
+  return (
+    <div
+      className="action-modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          !busy
+        ) {
+          onCancel();
+        }
+      }}
+    >
+      <div
+        className="action-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="action-modal-title"
+      >
+        <button
+          type="button"
+          className="action-modal-close"
+          onClick={onCancel}
+          disabled={busy}
+          aria-label="Close"
+        >
+          ×
+        </button>
+
+        <h2 id="action-modal-title">
+          {title}
+        </h2>
+
+        <p>{message}</p>
+
+        {error && (
+          <p className="action-modal-error">
+            {error}
+          </p>
+        )}
+
+        <div className="action-modal-actions">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            {cancelLabel}
+          </button>
+
+          <button
+            type="button"
+            ref={confirmRef}
+            className="action-modal-danger"
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {busy ? "…" : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   PAGE HEADER
+========================================================= */
+
+function PageHeader({
+  title,
+  subtitle,
+  onBack,
+}) {
   return (
     <div className="page-header">
-      <button className="back-btn" onClick={onBack}>
+      <button
+        type="button"
+        className="back-btn"
+        onClick={onBack}
+      >
         ←
       </button>
 
@@ -413,77 +670,167 @@ function PageHeader({ title, subtitle, onBack }) {
    KHATA
 ========================================================= */
 
-function KhataPage({ onBack, user, language }) {
+function KhataPage({
+  onBack,
+  user,
+  language,
+}) {
   const t = getTranslations(language);
 
-  const [transactions, setTransactions] = useState([]);
+  const [transactions, setTransactions] =
+    useState([]);
+
+  const [paymentTarget, setPaymentTarget] =
+    useState(null);
+
+  const [paymentBusy, setPaymentBusy] =
+    useState(false);
+
+  const [paymentError, setPaymentError] =
+    useState("");
+
   const [search, setSearch] = useState("");
-  const [dateFilter, setDateFilter] = useState("today");
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const now = new Date();
-    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(now);
-  });
 
-  const getDateQuery = () => {
-    if (dateFilter === "all") return "";
-    if (dateFilter === "today") return `date=${selectedDate}`;
-    const selected = new Date(`${selectedDate}T00:00:00`);
-    const start = new Date(selected);
-    const end = new Date(selected);
-    if (dateFilter === "yesterday") {
-      start.setDate(start.getDate() - 1);
-      end.setDate(end.getDate() - 1);
-    } else if (dateFilter === "week") {
-      start.setDate(start.getDate() - start.getDay());
-      end.setDate(start.getDate() + 6);
-    } else if (dateFilter === "month") {
-      start.setDate(1);
-      end.setMonth(start.getMonth() + 1, 0);
-    }
-    const format = (value) => value.toISOString().slice(0, 10);
-    return `start_date=${format(start)}&end_date=${format(end)}`;
-  };
+  const [dateFilter, setDateFilter] =
+    useState("today");
 
-  const loadTransactions = () => {
+  const [selectedDate, setSelectedDate] =
+    useState(getIndiaDate());
+
+  const loadTransactions = async () => {
     if (!user?.id) {
       setTransactions([]);
       return;
     }
 
-    const query = getDateQuery();
-    fetch(`${API}/transactions?account_id=${user.id}${query ? `&${query}` : ""}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setTransactions(data);
-        }
-      })
-      .catch((err) =>
-        console.error("Transactions error:", err)
+    try {
+      const query = getDateQuery(
+        dateFilter,
+        selectedDate
       );
+
+      const response = await fetch(
+        `${API}/transactions?account_id=${user.id}${
+          query ? `&${query}` : ""
+        }`
+      );
+
+      const data = await response.json();
+
+      if (Array.isArray(data)) {
+        setTransactions(data);
+      }
+    } catch (error) {
+      console.error(
+        "Transactions error:",
+        error
+      );
+    }
   };
 
   useEffect(() => {
     loadTransactions();
-  }, [user?.id, dateFilter, selectedDate]);
+  }, [
+    user?.id,
+    dateFilter,
+    selectedDate,
+  ]);
 
-  const visibleTransactions = transactions.filter((transaction) =>
-    transaction.customer
-      ?.toLowerCase()
-      .includes(search.toLowerCase())
-  );
-  const dailySales = visibleTransactions.reduce(
-    (sum, transaction) => sum + Number(transaction.total_amount || 0),
-    0
-  );
-  const dailyCollected = visibleTransactions.reduce(
-    (sum, transaction) => sum + Number(transaction.paid_amount || 0),
-    0
-  );
-  const dailyPending = visibleTransactions.reduce(
-    (sum, transaction) => sum + Number(transaction.pending_amount || 0),
-    0
-  );
+  const visibleTransactions =
+    transactions.filter((transaction) =>
+      matchesSearch(
+        getLocalizedCustomerName(
+          transaction.customer,
+          language
+        ),
+        search
+      ) ||
+      matchesSearch(
+        transaction.customer,
+        search
+      )
+    );
+
+  const dailySales =
+    visibleTransactions.reduce(
+      (sum, transaction) =>
+        sum +
+        Number(
+          transaction.total_amount || 0
+        ),
+      0
+    );
+
+  const dailyCollected =
+    visibleTransactions.reduce(
+      (sum, transaction) =>
+        sum +
+        Number(
+          transaction.paid_amount || 0
+        ),
+      0
+    );
+
+  const dailyPending =
+    visibleTransactions.reduce(
+      (sum, transaction) =>
+        sum +
+        Number(
+          transaction.pending_amount || 0
+        ),
+      0
+    );
+
+  const markAsPaid = async (transaction) => {
+    if (!user?.id) return;
+
+    setPaymentBusy(true);
+    setPaymentError("");
+
+    try {
+      const response = await fetch(
+        `${API}/transactions/${transaction._id}/payment?account_id=${user.id}`,
+        {
+          method: "PATCH",
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setPaymentError(
+          data.detail ||
+            t.unableAddCustomer
+        );
+        setPaymentBusy(false);
+        return;
+      }
+
+      await loadTransactions();
+
+      window.dispatchEvent(
+        new Event("transaction-updated")
+      );
+
+      setPaymentTarget(null);
+    } catch (error) {
+      console.error(error);
+
+      setPaymentError(
+        t.backendError
+      );
+    } finally {
+      setPaymentBusy(false);
+    }
+  };
+
+  const filterLabels = {
+    today: t.today,
+    yesterday: t.yesterday,
+    week: t.thisWeek,
+    month: t.thisMonth,
+    all: t.all,
+  };
 
   return (
     <div className="dashboard-page">
@@ -498,101 +845,204 @@ function KhataPage({ onBack, user, language }) {
           type="text"
           placeholder={t.searchCustomer}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(event) =>
+            setSearch(event.target.value)
+          }
         />
       </div>
 
       <div className="khata-filters">
-        {["today", "yesterday", "week", "month", "all"].map((filter) => (
+        {[
+          "today",
+          "yesterday",
+          "week",
+          "month",
+          "all",
+        ].map((filter) => (
           <button
+            type="button"
             key={filter}
-            className={dateFilter === filter ? "active" : ""}
-            onClick={() => setDateFilter(filter)}
+            className={
+              dateFilter === filter
+                ? "active"
+                : ""
+            }
+            onClick={() =>
+              setDateFilter(filter)
+            }
           >
-            {filter === "today" ? "Today" : filter === "yesterday" ? "Yesterday" : filter === "week" ? "This Week" : filter === "month" ? "This Month" : "All"}
+            {filterLabels[filter]}
           </button>
         ))}
+
         <input
           type="date"
           value={selectedDate}
           onChange={(event) => {
-            setSelectedDate(event.target.value);
+            setSelectedDate(
+              event.target.value
+            );
             setDateFilter("today");
           }}
-          aria-label="Select Khata date"
+          aria-label={t.selectDate}
         />
       </div>
 
       <div className="ledger-summary khata-summary">
-        <div><span>Sales</span><strong>₹{dailySales.toLocaleString("en-IN")}</strong></div>
-        <div><span>Collected</span><strong>₹{dailyCollected.toLocaleString("en-IN")}</strong></div>
-        <div><span>Pending</span><strong className="pending-balance">₹{dailyPending.toLocaleString("en-IN")}</strong></div>
+        <div>
+          <span>{t.sales}</span>
+          <strong>
+            ₹{formatCurrency(dailySales)}
+          </strong>
+        </div>
+
+        <div>
+          <span>{t.collected}</span>
+          <strong>
+            ₹{formatCurrency(dailyCollected)}
+          </strong>
+        </div>
+
+        <div>
+          <span>{t.pending}</span>
+          <strong className="pending-balance">
+            ₹{formatCurrency(dailyPending)}
+          </strong>
+        </div>
       </div>
 
       <div className="page-list">
         {visibleTransactions.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">📖</div>
+            <div className="empty-icon">
+              📖
+            </div>
+
             <h3>{t.noTransactions}</h3>
-            <p>{t.transactionsAppear}</p>
+
+            <p>
+              {t.transactionsAppear}
+            </p>
           </div>
         ) : (
-          visibleTransactions.map((transaction) => (
-            <div
-              className="transaction-card"
-              key={transaction._id}
-            >
-              <div className="transaction-top">
-                <div>
-                  <h3>{displayCustomerName(transaction.customer, language)}</h3>
+          visibleTransactions.map(
+            (transaction) => (
+              <div
+                className="transaction-card"
+                key={transaction._id}
+              >
+                <div className="transaction-top">
+                  <div>
+                    <h3>
+                      {getLocalizedCustomerName(
+                        transaction.customer,
+                        language
+                      )}
+                    </h3>
 
-                  <p>
-                    {transaction.items?.map((item, index) => (
-                      <span key={index}>
-                        {item.quantity} {item.unit || ""}{" "}
-                        {displayProductName(item.product, language)}
-                        {index < transaction.items.length - 1
-                          ? ", "
-                          : ""}
-                      </span>
-                    ))}
-                  </p>
+                    <p>
+                      {transaction.items?.map(
+                        (item, index) => (
+                          <span key={index}>
+                            {item.quantity}{" "}
+                            {item.unit || ""}{" "}
+                            {getLocalizedProductName(
+                              item.product,
+                              language
+                            )}
+                            {index <
+                            transaction.items
+                              .length -
+                              1
+                              ? ", "
+                              : ""}
+                          </span>
+                        )
+                      )}
+                    </p>
+                  </div>
+
+                  <strong>
+                    ₹
+                    {formatCurrency(
+                      transaction.total_amount
+                    )}
+                  </strong>
                 </div>
 
-                <strong>
-                  ₹
-                  {Number(
-                    transaction.total_amount || 0
-                  ).toLocaleString("en-IN")}
-                </strong>
-              </div>
+                <div className="transaction-bottom">
+                  <span>
+                    {t.paid}: ₹
+                    {formatCurrency(
+                      transaction.paid_amount
+                    )}
+                  </span>
 
-              <div className="transaction-bottom">
-                <span>
-                  {t.paid}: ₹
-                  {Number(
-                    transaction.paid_amount || 0
-                  ).toLocaleString("en-IN")}
-                </span>
+                  <span
+                    className={`status ${
+                      transaction.payment_status ||
+                      "pending"
+                    }`}
+                  >
+                    {transaction.payment_status ===
+                    "paid"
+                      ? t.paid
+                      : transaction.payment_status ===
+                        "credit"
+                      ? t.credit
+                      : transaction.payment_status ===
+                        "partial"
+                      ? t.partial
+                      : t.pending}
+                  </span>
 
-                <span
-                  className={`status ${
-                    transaction.payment_status || "pending"
-                  }`}
-                >
-                  {transaction.payment_status === "paid"
-                    ? t.paid
-                    : transaction.payment_status === "credit"
-                    ? t.credit
-                    : transaction.payment_status === "partial"
-                    ? t.partial
-                    : t.pending}
-                </span>
+                  {Number(
+                    transaction.pending_amount || 0
+                  ) > 0 && (
+                    <button
+                      type="button"
+                      className="small-action"
+                      onClick={() => {
+                        setPaymentError("");
+                        setPaymentTarget(
+                          transaction
+                        );
+                      }}
+                    >
+                      {t.markAsPaid}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            )
+          )
         )}
       </div>
+
+      {paymentTarget && (
+        <ConfirmationModal
+          title={t.markAsPaid}
+          message={t.paidConfirm.replace(
+            "{amount}",
+            formatCurrency(
+              paymentTarget.pending_amount
+            )
+          )}
+          cancelLabel={t.cancel}
+          confirmLabel={t.markAsPaid}
+          busy={paymentBusy}
+          error={paymentError}
+          onCancel={() => {
+            if (!paymentBusy) {
+              setPaymentTarget(null);
+              setPaymentError("");
+            }
+          }}
+          onConfirm={() =>
+            markAsPaid(paymentTarget)
+          }
+        />
+      )}
     </div>
   );
 }
@@ -609,45 +1059,62 @@ function CustomersPage({
 }) {
   const t = getTranslations(language);
 
-  const [customers, setCustomers] = useState([]);
-  const [search, setSearch] = useState("");
-  const [showForm, setShowForm] = useState(false);
+  const [customers, setCustomers] =
+    useState([]);
 
-  const [formData, setFormData] = useState({
-    name: "",
-    phone: "",
-  });
+  const [search, setSearch] =
+    useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [showForm, setShowForm] =
+    useState(false);
 
-  const loadCustomers = () => {
+  const [formData, setFormData] =
+    useState({
+      name: "",
+      phone: "",
+    });
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const loadCustomers = async () => {
     if (!user?.id) {
       setCustomers([]);
       return;
     }
 
-    fetch(`${API}/customers?account_id=${user.id}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setCustomers(data);
-        }
-      })
-      .catch((err) =>
-        console.error("Customers error:", err)
+    try {
+      const response = await fetch(
+        `${API}/customers?account_id=${user.id}`
       );
+
+      const data = await response.json();
+
+      if (Array.isArray(data)) {
+        setCustomers(data);
+      }
+    } catch (error) {
+      console.error(
+        "Customers error:",
+        error
+      );
+    }
   };
 
   useEffect(() => {
     loadCustomers();
   }, [user?.id]);
 
-  const addCustomer = async (e) => {
-    e.preventDefault();
+  const addCustomer = async (event) => {
+    event.preventDefault();
 
     if (!formData.name.trim()) {
-      setMessage(t.enterCustomerName);
+      setMessage(
+        t.enterCustomerName
+      );
       return;
     }
 
@@ -655,22 +1122,31 @@ function CustomersPage({
     setMessage("");
 
     try {
-      const response = await fetch(`${API}/customers`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          account_id: user.id,
-          name: formData.name.trim(),
-          phone: formData.phone.trim() || null,
-        }),
-      });
+      const response = await fetch(
+        `${API}/customers`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            account_id: user.id,
+            name: formData.name.trim(),
+            phone:
+              formData.phone.trim() ||
+              null,
+          }),
+        }
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
-        setMessage(data.detail || t.unableAddCustomer);
+        setMessage(
+          data.detail ||
+            t.unableAddCustomer
+        );
         return;
       }
 
@@ -680,9 +1156,11 @@ function CustomersPage({
       });
 
       setShowForm(false);
-      setMessage(t.customerAdded);
+      setMessage(
+        t.customerAdded
+      );
 
-      loadCustomers();
+      await loadCustomers();
     } catch (error) {
       console.error(error);
       setMessage(t.backendError);
@@ -691,17 +1169,29 @@ function CustomersPage({
     }
   };
 
-  const visibleCustomers = customers.filter((customer) => {
-    const searchText = search.toLowerCase();
+  const visibleCustomers =
+    customers.filter((customer) => {
+      const localizedName =
+        getLocalizedCustomerName(
+          customer.name,
+          language
+        );
 
-    return (
-      customer.name?.toLowerCase().includes(searchText) ||
-      customer.phone?.toLowerCase().includes(searchText) ||
-      customer.aliases?.some((alias) =>
-        alias.toLowerCase().includes(searchText)
-      )
-    );
-  });
+      return (
+        matchesSearch(
+          customer.name,
+          search
+        ) ||
+        matchesSearch(
+          localizedName,
+          search
+        ) ||
+        matchesSearch(
+          customer.phone,
+          search
+        )
+      );
+    });
 
   return (
     <div className="dashboard-page">
@@ -715,20 +1205,29 @@ function CustomersPage({
         <div className="page-search">
           <input
             type="text"
-            placeholder={t.searchCustomers}
+            placeholder={
+              t.searchCustomers
+            }
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) =>
+              setSearch(
+                event.target.value
+              )
+            }
           />
         </div>
 
         <button
+          type="button"
           className="primary-action"
           onClick={() => {
             setShowForm(!showForm);
             setMessage("");
           }}
         >
-          {showForm ? t.cancel : t.addCustomer}
+          {showForm
+            ? t.cancel
+            : t.addCustomer}
         </button>
       </div>
 
@@ -743,92 +1242,115 @@ function CustomersPage({
           className="dashboard-form"
           onSubmit={addCustomer}
         >
-          <h2>{t.addCustomerTitle}</h2>
+          <h2>
+            {t.addCustomerTitle}
+          </h2>
 
-          <label>{t.customerName}</label>
+          <label>
+            {t.customerName}
+          </label>
+
           <input
             type="text"
-            placeholder={t.customerNamePlaceholder}
+            placeholder={
+              t.customerNamePlaceholder
+            }
             value={formData.name}
-            onChange={(e) =>
+            onChange={(event) =>
               setFormData({
                 ...formData,
-                name: e.target.value,
+                name: event.target.value,
               })
             }
           />
 
           <label>{t.phone}</label>
+
           <input
             type="text"
             placeholder={t.optional}
             value={formData.phone}
-            onChange={(e) =>
+            onChange={(event) =>
               setFormData({
                 ...formData,
-                phone: e.target.value,
+                phone:
+                  event.target.value,
               })
             }
           />
 
           <button
-            className="primary-action form-submit"
             type="submit"
+            className="primary-action form-submit"
             disabled={loading}
           >
-            {loading ? t.adding : t.addCustomer}
+            {loading
+              ? t.adding
+              : t.addCustomer}
           </button>
         </form>
       )}
 
       <div className="page-list">
-        {visibleCustomers.length === 0 ? (
+        {visibleCustomers.length ===
+        0 ? (
           <div className="empty-state">
-            <div className="empty-icon">👥</div>
-            <h3>{t.noCustomers}</h3>
-            <p>{t.addFirstCustomer}</p>
+            <div className="empty-icon">
+              👥
+            </div>
+
+            <h3>
+              {t.noCustomers}
+            </h3>
+
+            <p>
+              {t.addFirstCustomer}
+            </p>
           </div>
         ) : (
-          visibleCustomers.map((customer) => (
-            <div
-              className="customer-card"
-              key={customer._id}
-            >
-              <div className="customer-avatar">
-                {customer.name?.charAt(0)?.toUpperCase() ||
-                  "C"}
-              </div>
-
-              <div className="customer-info">
-                <h3>{displayCustomerName(customer.name, language)}</h3>
-
-                {customer.phone && (
-                  <p>📞 {customer.phone}</p>
-                )}
-
-                {customer.aliases?.length > 0 && (
-                  <div className="aliases">
-                    {customer.aliases.map(
-                      (alias, index) => (
-                        <span key={index}>{alias}</span>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <button
-                className="small-action"
-                onClick={() =>
-                  onPageChange(
-                    `customer:${customer.name}`
-                  )
-                }
+          visibleCustomers.map(
+            (customer) => (
+              <div
+                className="customer-card"
+                key={customer._id}
               >
-                {t.view}
-              </button>
-            </div>
-          ))
+                <div className="customer-avatar">
+                  {customer.name
+                    ?.charAt(0)
+                    ?.toUpperCase() ||
+                    "C"}
+                </div>
+
+                <div className="customer-info">
+                  <h3>
+                    {getLocalizedCustomerName(
+                      customer.name,
+                      language
+                    )}
+                  </h3>
+
+                  {customer.phone && (
+                    <p>
+                      📞{" "}
+                      {customer.phone}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="small-action"
+                  onClick={() =>
+                    onPageChange(
+                      `customer:${customer.name}`
+                    )
+                  }
+                >
+                  {t.view}
+                </button>
+              </div>
+            )
+          )
         )}
       </div>
     </div>
@@ -842,13 +1364,58 @@ function CustomersPage({
 function CustomerDetailPage({
   customerName,
   onBack,
+  onPageChange,
   user,
   language,
 }) {
   const t = getTranslations(language);
 
-  const [ledger, setLedger] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [ledger, setLedger] =
+    useState(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [modal, setModal] =
+    useState(null);
+
+  const [actionBusy, setActionBusy] =
+    useState(false);
+
+  const [actionError, setActionError] =
+    useState("");
+
+  const loadLedger = async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        `${API}/customers/${encodeURIComponent(
+          customerName
+        )}/ledger?account_id=${user.id}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setLedger(null);
+        return;
+      }
+
+      setLedger(data);
+    } catch (error) {
+      console.error(
+        "Customer ledger error:",
+        error
+      );
+
+      setLedger(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!user?.id) {
@@ -857,27 +1424,167 @@ function CustomerDetailPage({
       return;
     }
 
-    setLoading(true);
+    loadLedger();
+  }, [
+    customerName,
+    user?.id,
+  ]);
 
-    fetch(
-      `${API}/customers/${encodeURIComponent(
-        customerName
-      )}/ledger?account_id=${user.id}`
-    )
-      .then((res) => res.json())
-      .then((data) => setLedger(data))
-      .catch((err) =>
-        console.error("Customer ledger error:", err)
-      )
-      .finally(() => setLoading(false));
-  }, [customerName, user?.id]);
+  const openDeleteModal = () => {
+    const pending =
+      Number(
+        ledger?.total_pending || 0
+      );
+
+    setActionError("");
+
+    setModal({
+      type: "delete-customer",
+      title: t.deleteCustomer,
+      message:
+        pending > 0
+          ? t.deletePending.replace(
+              "{amount}",
+              formatCurrency(pending)
+            )
+          : t.deleteConfirm,
+    });
+  };
+
+  const openPaymentModal = (
+    transaction
+  ) => {
+    setActionError("");
+
+    setModal({
+      type: "payment",
+      transaction,
+      title: t.markAsPaid,
+      message:
+        t.paidConfirm.replace(
+          "{amount}",
+          formatCurrency(
+            transaction.pending_amount
+          )
+        ),
+    });
+  };
+
+  const closeModal = () => {
+    if (actionBusy) return;
+
+    setModal(null);
+    setActionError("");
+  };
+
+  const confirmDeleteCustomer =
+    async () => {
+      if (!user?.id) return;
+
+      setActionBusy(true);
+      setActionError("");
+
+      try {
+        const response =
+          await fetch(
+            `${API}/customers/${encodeURIComponent(
+              customerName
+            )}?account_id=${user.id}`,
+            {
+              method: "DELETE",
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          setActionError(
+            data.detail ||
+              t.unableAddCustomer
+          );
+          return;
+        }
+
+        setModal(null);
+
+        window.dispatchEvent(
+          new Event("customer-updated")
+        );
+
+        onPageChange("customers");
+      } catch (error) {
+        console.error(error);
+
+        setActionError(
+          t.backendError
+        );
+      } finally {
+        setActionBusy(false);
+      }
+    };
+
+  const confirmPayment =
+    async () => {
+      if (
+        !user?.id ||
+        !modal?.transaction
+      ) {
+        return;
+      }
+
+      setActionBusy(true);
+      setActionError("");
+
+      try {
+        const response =
+          await fetch(
+            `${API}/transactions/${modal.transaction._id}/payment?account_id=${user.id}`,
+            {
+              method: "PATCH",
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          setActionError(
+            data.detail ||
+              t.backendError
+          );
+          return;
+        }
+
+        setModal(null);
+
+        await loadLedger();
+
+        window.dispatchEvent(
+          new Event("transaction-updated")
+        );
+      } catch (error) {
+        console.error(error);
+
+        setActionError(
+          t.backendError
+        );
+      } finally {
+        setActionBusy(false);
+      }
+    };
 
   if (loading) {
     return (
       <div className="dashboard-page">
         <PageHeader
-          title={displayCustomerName(customerName, language)}
-          subtitle={t.customerLedger}
+          title={getLocalizedCustomerName(
+            customerName,
+            language
+          )}
+          subtitle={
+            t.customerLedger
+          }
           onBack={onBack}
         />
 
@@ -891,116 +1598,197 @@ function CustomerDetailPage({
   return (
     <div className="dashboard-page">
       <PageHeader
-        title={displayCustomerName(customerName, language)}
+        title={getLocalizedCustomerName(
+          customerName,
+          language
+        )}
         subtitle={t.customerLedger}
         onBack={onBack}
       />
 
       <div className="ledger-summary">
         <div>
-          <span>{t.totalPurchased}</span>
+          <span>
+            {t.totalPurchased}
+          </span>
+
           <strong>
             ₹
-            {Number(
-              ledger?.total_purchased || 0
-            ).toLocaleString("en-IN")}
+            {formatCurrency(
+              ledger?.total_purchased
+            )}
           </strong>
         </div>
 
         <div>
           <span>{t.totalPaid}</span>
+
           <strong>
             ₹
-            {Number(
-              ledger?.total_paid || 0
-            ).toLocaleString("en-IN")}
+            {formatCurrency(
+              ledger?.total_paid
+            )}
           </strong>
         </div>
 
         <div>
           <span>{t.pending}</span>
+
           <strong className="pending-balance">
             ₹
-            {Number(
-              ledger?.total_pending || 0
-            ).toLocaleString("en-IN")}
+            {formatCurrency(
+              ledger?.total_pending
+            )}
           </strong>
         </div>
       </div>
 
+      <button
+        type="button"
+        className="primary-action"
+        onClick={
+          openDeleteModal
+        }
+      >
+        {t.deleteCustomer}
+      </button>
+
       <div className="page-list">
-        {ledger?.transactions?.length === 0 ? (
+        {!ledger?.transactions ||
+        ledger.transactions.length ===
+          0 ? (
           <div className="empty-state">
-            <h3>{t.noCustomerTransactions}</h3>
-            <p>{t.noCustomerTransactionsSub}</p>
+            <h3>
+              {
+                t.noCustomerTransactions
+              }
+            </h3>
+
+            <p>
+              {
+                t.noCustomerTransactionsSub
+              }
+            </p>
           </div>
         ) : (
-          ledger?.transactions?.map((transaction) => (
-            <div
-              className="transaction-card"
-              key={transaction._id}
-            >
-              <div className="transaction-top">
-                <div>
-                  <h3>
-                    {transaction.items?.map(
-                      (item, index) => (
-                        <span key={index}>
-                          {item.quantity}{" "}
-                          {item.unit || ""}{" "}
-                          {displayProductName(item.product, language)}
-                          {index <
-                          transaction.items.length - 1
-                            ? ", "
-                            : ""}
-                        </span>
-                      )
-                    )}
-                  </h3>
+          ledger.transactions.map(
+            (transaction) => (
+              <div
+                className="transaction-card"
+                key={transaction._id}
+              >
+                <div className="transaction-top">
+                  <div>
+                    <h3>
+                      {transaction.items?.map(
+                        (item, index) => (
+                          <span
+                            key={index}
+                          >
+                            {item.quantity}{" "}
+                            {item.unit || ""}{" "}
+                            {getLocalizedProductName(
+                              item.product,
+                              language
+                            )}
+                            {index <
+                            transaction.items
+                              .length -
+                              1
+                              ? ", "
+                              : ""}
+                          </span>
+                        )
+                      )}
+                    </h3>
 
-                  <p>
-                    {t.paid}: ₹
-                    {Number(
-                      transaction.paid_amount || 0
-                    ).toLocaleString("en-IN")}
-                  </p>
+                    <p>
+                      {t.paid}: ₹
+                      {formatCurrency(
+                        transaction.paid_amount
+                      )}
+                    </p>
+                  </div>
+
+                  <strong>
+                    ₹
+                    {formatCurrency(
+                      transaction.total_amount
+                    )}
+                  </strong>
                 </div>
 
-                <strong>
-                  ₹
-                  {Number(
-                    transaction.total_amount || 0
-                  ).toLocaleString("en-IN")}
-                </strong>
-              </div>
+                <div className="transaction-bottom">
+                  <span className="pending-balance">
+                    {t.pending}: ₹
+                    {formatCurrency(
+                      transaction.pending_amount
+                    )}
+                  </span>
 
-              <div className="transaction-bottom">
-                <span className="pending-balance">
-                  {t.pending}: ₹
-                  {Number(
-                    transaction.pending_amount || 0
-                  ).toLocaleString("en-IN")}
-                </span>
+                  <span
+                    className={`status ${
+                      transaction.payment_status ||
+                      "pending"
+                    }`}
+                  >
+                    {transaction.payment_status ===
+                    "paid"
+                      ? t.paid
+                      : transaction.payment_status ===
+                        "credit"
+                      ? t.credit
+                      : transaction.payment_status ===
+                        "partial"
+                      ? t.partial
+                      : t.pending}
+                  </span>
 
-                <span
-                  className={`status ${
-                    transaction.payment_status ||
-                    "pending"
-                  }`}
-                >
-                  {transaction.payment_status === "paid"
-                    ? t.paid
-                    : transaction.payment_status === "credit"
-                    ? t.credit
-                    : transaction.payment_status === "partial"
-                    ? t.partial
-                    : t.pending}
-                </span>
+                  {Number(
+                    transaction.pending_amount ||
+                      0
+                  ) > 0 && (
+                    <button
+                      type="button"
+                      className="small-action"
+                      onClick={() =>
+                        openPaymentModal(
+                          transaction
+                        )
+                      }
+                    >
+                      {t.markAsPaid}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            )
+          )
         )}
       </div>
+
+      {modal && (
+        <ConfirmationModal
+          title={modal.title}
+          message={modal.message}
+          cancelLabel={t.cancel}
+          confirmLabel={
+            modal.type ===
+            "delete-customer"
+              ? t.deleteCustomer
+              : t.markAsPaid
+          }
+          busy={actionBusy}
+          error={actionError}
+          onCancel={closeModal}
+          onConfirm={
+            modal.type ===
+            "delete-customer"
+              ? confirmDeleteCustomer
+              : confirmPayment
+          }
+        />
+      )}
     </div>
   );
 }
@@ -1009,55 +1797,90 @@ function CustomerDetailPage({
    STOCK
 ========================================================= */
 
-function StockPage({ onBack, user, language }) {
+function StockPage({
+  onBack,
+  user,
+  language,
+}) {
   const t = getTranslations(language);
 
-  const [products, setProducts] = useState([]);
-  const [search, setSearch] = useState("");
-  const [showForm, setShowForm] = useState(false);
+  const [products, setProducts] =
+    useState([]);
 
-  const [formData, setFormData] = useState({
-    name: "",
-    price: "",
-    stock: "",
-    unit: "",
-  });
+  const [search, setSearch] =
+    useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [showForm, setShowForm] =
+    useState(false);
 
-  const loadProducts = () => {
+  const [formData, setFormData] =
+    useState({
+      name: "",
+      price: "",
+      stock: "",
+      unit: "",
+    });
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [deleteTarget, setDeleteTarget] =
+    useState(null);
+
+  const [deleteBusy, setDeleteBusy] =
+    useState(false);
+
+  const [deleteError, setDeleteError] =
+    useState("");
+
+  const loadProducts = async () => {
     if (!user?.id) {
       setProducts([]);
       return;
     }
 
-    fetch(`${API}/products?account_id=${user.id}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setProducts(data);
-        }
-      })
-      .catch((err) =>
-        console.error("Products error:", err)
+    try {
+      const response = await fetch(
+        `${API}/products?account_id=${user.id}`
       );
+
+      const data = await response.json();
+
+      if (Array.isArray(data)) {
+        setProducts(data);
+      }
+    } catch (error) {
+      console.error(
+        "Products error:",
+        error
+      );
+    }
   };
 
   useEffect(() => {
     loadProducts();
   }, [user?.id]);
 
-  const addProduct = async (e) => {
-    e.preventDefault();
+  const addProduct = async (event) => {
+    event.preventDefault();
 
     if (!formData.name.trim()) {
-      setMessage(t.enterProductName);
+      setMessage(
+        t.enterProductName
+      );
       return;
     }
 
-    if (!formData.price) {
-      setMessage(t.enterProductPrice);
+    if (
+      formData.price === "" ||
+      Number(formData.price) < 0
+    ) {
+      setMessage(
+        t.enterProductPrice
+      );
       return;
     }
 
@@ -1065,27 +1888,38 @@ function StockPage({ onBack, user, language }) {
     setMessage("");
 
     try {
-      const response = await fetch(`${API}/products`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          account_id: user.id,
-          name: formData.name.trim(),
-          price: Number(formData.price),
-          stock: formData.stock
-            ? Number(formData.stock)
-            : 0,
-          unit: formData.unit.trim() || null,
-        }),
-      });
+      const response = await fetch(
+        `${API}/products`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            account_id: user.id,
+            name: formData.name.trim(),
+            price: Number(
+              formData.price
+            ),
+            stock:
+              formData.stock === ""
+                ? 0
+                : Number(formData.stock),
+            unit:
+              formData.unit.trim() ||
+              null,
+          }),
+        }
+      );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
         setMessage(
-          data.detail || t.unableAddProduct
+          data.detail ||
+            t.unableAddProduct
         );
         return;
       }
@@ -1098,9 +1932,11 @@ function StockPage({ onBack, user, language }) {
       });
 
       setShowForm(false);
-      setMessage(t.productAdded);
+      setMessage(
+        t.productAdded
+      );
 
-      loadProducts();
+      await loadProducts();
     } catch (error) {
       console.error(error);
       setMessage(t.backendError);
@@ -1109,11 +1945,86 @@ function StockPage({ onBack, user, language }) {
     }
   };
 
-  const visibleProducts = products.filter((product) =>
-    product.name
-      ?.toLowerCase()
-      .includes(search.toLowerCase())
-  );
+  const openDeleteProduct =
+    (product) => {
+      setDeleteError("");
+
+      setDeleteTarget(product);
+    };
+
+  const deleteProduct = async () => {
+    if (
+      !deleteTarget ||
+      !user?.id
+    ) {
+      return;
+    }
+
+    setDeleteBusy(true);
+    setDeleteError("");
+
+    try {
+      const response =
+        await fetch(
+          `${API}/products/${encodeURIComponent(
+            deleteTarget.name
+          )}?account_id=${user.id}`,
+          {
+            method: "DELETE",
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        setDeleteError(
+          data.detail ||
+            t.unableAddProduct
+        );
+        return;
+      }
+
+      setDeleteTarget(null);
+      setMessage(
+        t.productDeleted
+      );
+
+      await loadProducts();
+
+      window.dispatchEvent(
+        new Event("product-updated")
+      );
+    } catch (error) {
+      console.error(error);
+
+      setDeleteError(
+        t.backendError
+      );
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const visibleProducts =
+    products.filter((product) => {
+      const localizedName =
+        getLocalizedProductName(
+          product.name,
+          language
+        );
+
+      return (
+        matchesSearch(
+          product.name,
+          search
+        ) ||
+        matchesSearch(
+          localizedName,
+          search
+        )
+      );
+    });
 
   return (
     <div className="dashboard-page">
@@ -1127,20 +2038,29 @@ function StockPage({ onBack, user, language }) {
         <div className="page-search">
           <input
             type="text"
-            placeholder={t.searchProducts}
+            placeholder={
+              t.searchProducts
+            }
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) =>
+              setSearch(
+                event.target.value
+              )
+            }
           />
         </div>
 
         <button
+          type="button"
           className="primary-action"
           onClick={() => {
             setShowForm(!showForm);
             setMessage("");
           }}
         >
-          {showForm ? t.cancel : t.addProduct}
+          {showForm
+            ? t.cancel
+            : t.addProduct}
         </button>
       </div>
 
@@ -1155,111 +2075,199 @@ function StockPage({ onBack, user, language }) {
           className="dashboard-form"
           onSubmit={addProduct}
         >
-          <h2>{t.addProductTitle}</h2>
+          <h2>
+            {t.addProductTitle}
+          </h2>
 
-          <label>{t.productName}</label>
+          <label>
+            {t.productName}
+          </label>
+
           <input
             type="text"
-            placeholder={t.productPlaceholder}
+            placeholder={
+              t.productPlaceholder
+            }
             value={formData.name}
-            onChange={(e) =>
+            onChange={(event) =>
               setFormData({
                 ...formData,
-                name: e.target.value,
+                name: event.target.value,
               })
             }
           />
 
           <label>{t.price}</label>
+
           <input
             type="number"
-            placeholder={t.pricePlaceholder}
+            min="0"
+            placeholder={
+              t.pricePlaceholder
+            }
             value={formData.price}
-            onChange={(e) =>
+            onChange={(event) =>
               setFormData({
                 ...formData,
-                price: e.target.value,
+                price:
+                  event.target.value,
               })
             }
           />
 
-          <label>{t.stockLabel}</label>
+          <label>
+            {t.stockLabel}
+          </label>
+
           <input
             type="number"
-            placeholder={t.stockPlaceholder}
+            min="0"
+            placeholder={
+              t.stockPlaceholder
+            }
             value={formData.stock}
-            onChange={(e) =>
+            onChange={(event) =>
               setFormData({
                 ...formData,
-                stock: e.target.value,
+                stock:
+                  event.target.value,
               })
             }
           />
 
           <label>{t.unit}</label>
+
           <input
             type="text"
-            placeholder={t.unitPlaceholder}
+            placeholder={
+              t.unitPlaceholder
+            }
             value={formData.unit}
-            onChange={(e) =>
+            onChange={(event) =>
               setFormData({
                 ...formData,
-                unit: e.target.value,
+                unit:
+                  event.target.value,
               })
             }
           />
 
           <button
-            className="primary-action form-submit"
             type="submit"
+            className="primary-action form-submit"
             disabled={loading}
           >
-            {loading ? t.addingProduct : t.addProduct}
+            {loading
+              ? t.addingProduct
+              : t.addProduct}
           </button>
         </form>
       )}
 
       <div className="page-list">
-        {visibleProducts.length === 0 ? (
+        {visibleProducts.length ===
+        0 ? (
           <div className="empty-state">
-            <div className="empty-icon">📦</div>
-            <h3>{t.noProducts}</h3>
-            <p>{t.addProductsInventory}</p>
+            <div className="empty-icon">
+              📦
+            </div>
+
+            <h3>
+              {t.noProducts}
+            </h3>
+
+            <p>
+              {
+                t.addProductsInventory
+              }
+            </p>
           </div>
         ) : (
-          visibleProducts.map((product) => (
-            <div
-              className="product-card"
-              key={product._id}
-            >
-              <div className="product-icon">📦</div>
+          visibleProducts.map(
+            (product) => (
+              <div
+                className="product-card"
+                key={product._id}
+              >
+                <div className="product-icon">
+                  📦
+                </div>
 
-              <div className="product-info">
-                <h3>{displayProductName(product.name, language)}</h3>
+                <div className="product-info">
+                  <h3>
+                    {getLocalizedProductName(
+                      product.name,
+                      language
+                    )}
+                  </h3>
 
-                <p>
-                  ₹
-                  {Number(
-                    product.price || 0
-                  ).toLocaleString("en-IN")}
-                  {product.unit
-                    ? ` / ${product.unit}`
-                    : ""}
-                </p>
+                  <p>
+                    ₹
+                    {formatCurrency(
+                      product.price
+                    )}
+
+                    {product.unit
+                      ? ` / ${product.unit}`
+                      : ""}
+                  </p>
+                </div>
+
+                <div className="product-stock">
+                  <span>
+                    {t.productStock}
+                  </span>
+
+                  <strong>
+                    {product.stock || 0}{" "}
+                    {product.unit || ""}
+                  </strong>
+                </div>
+
+                <button
+                  type="button"
+                  className="small-action danger-action"
+                  onClick={() =>
+                    openDeleteProduct(
+                      product
+                    )
+                  }
+                >
+                  {t.deleteProduct}
+                </button>
               </div>
-
-              <div className="product-stock">
-                <span>{t.productStock}</span>
-
-                <strong>
-                  {product.stock || 0}{" "}
-                  {product.unit || ""}
-                </strong>
-              </div>
-            </div>
-          ))
+            )
+          )
         )}
       </div>
+
+      {deleteTarget && (
+        <ConfirmationModal
+          title={
+            t.deleteProductConfirm
+          }
+          message={t.deleteProductMessage.replace(
+            "{name}",
+            getLocalizedProductName(
+              deleteTarget.name,
+              language
+            )
+          )}
+          cancelLabel={t.cancel}
+          confirmLabel={
+            t.deleteProduct
+          }
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={() => {
+            if (!deleteBusy) {
+              setDeleteTarget(null);
+              setDeleteError("");
+            }
+          }}
+          onConfirm={deleteProduct}
+        />
+      )}
     </div>
   );
 }
@@ -1268,14 +2276,21 @@ function StockPage({ onBack, user, language }) {
    CALENDAR
 ========================================================= */
 
-function CalendarPage({ onBack, user, language }) {
+function CalendarPage({
+  onBack,
+  user,
+  language,
+}) {
   const t = getTranslations(language);
 
-  const [transactions, setTransactions] = useState([]);
+  const [transactions, setTransactions] =
+    useState([]);
 
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [selectedDate, setSelectedDate] =
+    useState(getIndiaDate());
+
+  const [loading, setLoading] =
+    useState(false);
 
   useEffect(() => {
     if (!user?.id) {
@@ -1283,35 +2298,41 @@ function CalendarPage({ onBack, user, language }) {
       return;
     }
 
-    fetch(`${API}/transactions?account_id=${user.id}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setTransactions(data);
+    const loadCalendarTransactions =
+      async () => {
+        setLoading(true);
+
+        try {
+          const response =
+            await fetch(
+              `${API}/transactions?account_id=${user.id}&date=${selectedDate}`
+            );
+
+          const data =
+            await response.json();
+
+          if (Array.isArray(data)) {
+            setTransactions(data);
+          } else {
+            setTransactions([]);
+          }
+        } catch (error) {
+          console.error(
+            "Calendar error:",
+            error
+          );
+
+          setTransactions([]);
+        } finally {
+          setLoading(false);
         }
-      })
-      .catch((err) =>
-        console.error("Calendar error:", err)
-      );
-  }, [user?.id]);
+      };
 
-  const selectedTransactions = transactions.filter(
-    (transaction) => {
-      if (!transaction._id) return false;
-
-      const objectIdDate = new Date(
-        parseInt(
-          transaction._id.substring(0, 8),
-          16
-        ) * 1000
-      );
-
-      return (
-        objectIdDate.toISOString().split("T")[0] ===
-        selectedDate
-      );
-    }
-  );
+    loadCalendarTransactions();
+  }, [
+    user?.id,
+    selectedDate,
+  ]);
 
   return (
     <div className="dashboard-page">
@@ -1322,86 +2343,135 @@ function CalendarPage({ onBack, user, language }) {
       />
 
       <div className="calendar-picker">
-        <label>{t.selectDate}</label>
+        <label>
+          {t.selectDate}
+        </label>
 
         <input
           type="date"
           value={selectedDate}
-          onChange={(e) =>
-            setSelectedDate(e.target.value)
+          onChange={(event) =>
+            setSelectedDate(
+              event.target.value
+            )
           }
         />
       </div>
 
-      <div className="page-list">
-        {selectedTransactions.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">📅</div>
-            <h3>{t.noTransactionsDate}</h3>
-            <p>{t.transactionsDateSub}</p>
-          </div>
-        ) : (
-          selectedTransactions.map((transaction) => (
-            <div
-              className="transaction-card"
-              key={transaction._id}
-            >
-              <div className="transaction-top">
-                <div>
-                  <h3>{displayCustomerName(transaction.customer, language)}</h3>
-
-                  <p>
-                    {transaction.items?.map(
-                      (item, index) => (
-                        <span key={index}>
-                          {item.quantity}{" "}
-                          {item.unit || ""}{" "}
-                          {displayProductName(item.product, language)}
-                          {index <
-                          transaction.items.length - 1
-                            ? ", "
-                            : ""}
-                        </span>
-                      )
-                    )}
-                  </p>
-                </div>
-
-                <strong>
-                  ₹
-                  {Number(
-                    transaction.total_amount || 0
-                  ).toLocaleString("en-IN")}
-                </strong>
+      {loading ? (
+        <div className="empty-state">
+          <p>{t.loading}</p>
+        </div>
+      ) : (
+        <div className="page-list">
+          {transactions.length ===
+          0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">
+                📅
               </div>
 
-              <div className="transaction-bottom">
-                <span>
-                  {t.pending}: ₹
-                  {Number(
-                    transaction.pending_amount || 0
-                  ).toLocaleString("en-IN")}
-                </span>
+              <h3>
+                {
+                  t.noTransactionsDate
+                }
+              </h3>
 
-                <span
-                  className={`status ${
-                    transaction.payment_status ||
-                    "pending"
-                  }`}
-                >
-                  {transaction.payment_status === "paid"
-                    ? t.paid
-                    : transaction.payment_status === "credit"
-                    ? t.credit
-                    : transaction.payment_status === "partial"
-                    ? t.partial
-                    : t.pending}
-                </span>
-              </div>
+              <p>
+                {
+                  t.transactionsDateSub
+                }
+              </p>
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            transactions.map(
+              (transaction) => (
+                <div
+                  className="transaction-card"
+                  key={transaction._id}
+                >
+                  <div className="transaction-top">
+                    <div>
+                      <h3>
+                        {getLocalizedCustomerName(
+                          transaction.customer,
+                          language
+                        )}
+                      </h3>
+
+                      <p>
+                        {transaction.items?.map(
+                          (
+                            item,
+                            index
+                          ) => (
+                            <span
+                              key={
+                                index
+                              }
+                            >
+                              {
+                                item.quantity
+                              }{" "}
+                              {item.unit ||
+                                ""}{" "}
+                              {getLocalizedProductName(
+                                item.product,
+                                language
+                              )}
+                              {index <
+                              transaction
+                                .items
+                                .length -
+                                1
+                                ? ", "
+                                : ""}
+                            </span>
+                          )
+                        )}
+                      </p>
+                    </div>
+
+                    <strong>
+                      ₹
+                      {formatCurrency(
+                        transaction.total_amount
+                      )}
+                    </strong>
+                  </div>
+
+                  <div className="transaction-bottom">
+                    <span>
+                      {t.pending}: ₹
+                      {formatCurrency(
+                        transaction.pending_amount
+                      )}
+                    </span>
+
+                    <span
+                      className={`status ${
+                        transaction.payment_status ||
+                        "pending"
+                      }`}
+                    >
+                      {transaction.payment_status ===
+                      "paid"
+                        ? t.paid
+                        : transaction.payment_status ===
+                          "credit"
+                        ? t.credit
+                        : transaction.payment_status ===
+                          "partial"
+                        ? t.partial
+                        : t.pending}
+                    </span>
+                  </div>
+                </div>
+              )
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1429,70 +2499,147 @@ function MorePage({
 
       <div className="profile-preview">
         <div className="profile-avatar">
-          {user?.name?.charAt(0)?.toUpperCase() || "D"}
+          {user?.name
+            ?.charAt(0)
+            ?.toUpperCase() || "D"}
         </div>
 
         <div>
-          <h2>{user?.name || t.shopkeeper}</h2>
-          <p>{user?.shop || t.myShop}</p>
+          <h2>
+            {user?.name ||
+              t.shopkeeper}
+          </h2>
+
+          <p>
+            {user?.shop ||
+              t.myShop}
+          </p>
         </div>
       </div>
 
       <div className="more-list">
-        <button onClick={() => onPageChange("profile")}>
+        <button
+          type="button"
+          onClick={() =>
+            onPageChange("profile")
+          }
+        >
           <span>👤</span>
-          <div>
-            <strong>{t.myProfile}</strong>
-            <small>{t.myProfileSub}</small>
-          </div>
-          <b>→</b>
-        </button>
 
-        <button onClick={() => onPageChange("shop")}>
-          <span>🏪</span>
           <div>
-            <strong>{t.shopDetails}</strong>
-            <small>{t.shopDetailsSub}</small>
-          </div>
-          <b>→</b>
-        </button>
+            <strong>
+              {t.myProfile}
+            </strong>
 
-        <button onClick={() => onPageChange("reports")}>
-          <span>📊</span>
-          <div>
-            <strong>{t.reports}</strong>
-            <small>{t.reportsSub}</small>
+            <small>
+              {t.myProfileSub}
+            </small>
           </div>
-          <b>→</b>
-        </button>
 
-        <button onClick={() => onPageChange("settings")}>
-          <span>⚙️</span>
-          <div>
-            <strong>{t.settings}</strong>
-            <small>{t.settingsSub}</small>
-          </div>
-          <b>→</b>
-        </button>
-
-        <button onClick={() => onPageChange("language")}>
-          <span>🌐</span>
-          <div>
-            <strong>{t.language}</strong>
-            <small>{t.languageSub}</small>
-          </div>
           <b>→</b>
         </button>
 
         <button
+          type="button"
+          onClick={() =>
+            onPageChange("shop")
+          }
+        >
+          <span>🏪</span>
+
+          <div>
+            <strong>
+              {t.shopDetails}
+            </strong>
+
+            <small>
+              {t.shopDetailsSub}
+            </small>
+          </div>
+
+          <b>→</b>
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            onPageChange("reports")
+          }
+        >
+          <span>📊</span>
+
+          <div>
+            <strong>
+              {t.reports}
+            </strong>
+
+            <small>
+              {t.reportsSub}
+            </small>
+          </div>
+
+          <b>→</b>
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            onPageChange("settings")
+          }
+        >
+          <span>⚙️</span>
+
+          <div>
+            <strong>
+              {t.settings}
+            </strong>
+
+            <small>
+              {t.settingsSub}
+            </small>
+          </div>
+
+          <b>→</b>
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            onPageChange("language")
+          }
+        >
+          <span>🌐</span>
+
+          <div>
+            <strong>
+              {t.language}
+            </strong>
+
+            <small>
+              {t.languageSub}
+            </small>
+          </div>
+
+          <b>→</b>
+        </button>
+
+        <button
+          type="button"
           className="logout-option"
           onClick={onLogout}
         >
           <span>🚪</span>
+
           <div>
-            <strong>{t.logout}</strong>
-            <small>{t.logoutSub}</small>
+            <strong>
+              {t.logout}
+            </strong>
+
+            <small>
+              {t.logoutSub}
+            </small>
           </div>
+
           <b>→</b>
         </button>
       </div>
@@ -1512,6 +2659,7 @@ function SimplePage({
   user,
   language,
   onPageChange,
+  onLanguageChange,
 }) {
   const t = getTranslations(language);
 
@@ -1526,17 +2674,25 @@ function SimplePage({
       <div className="dashboard-form">
         {page === "profile" && (
           <>
-            <h2>{t.profileTitle}</h2>
+            <h2>
+              {t.profileTitle}
+            </h2>
 
             <label>{t.name}</label>
+
             <input
               value={user?.name || ""}
               readOnly
             />
 
-            <label>{t.mobile}</label>
+            <label>
+              {t.mobile}
+            </label>
+
             <input
-              value={user?.mobile || ""}
+              value={
+                user?.mobile || ""
+              }
               readOnly
             />
           </>
@@ -1544,17 +2700,31 @@ function SimplePage({
 
         {page === "shop" && (
           <>
-            <h2>{t.shopTitle}</h2>
+            <h2>
+              {t.shopTitle}
+            </h2>
 
-            <label>{t.shopName}</label>
+            <label>
+              {t.shopName}
+            </label>
+
             <input
-              value={user?.shop || t.myShop}
+              value={
+                user?.shop ||
+                t.myShop
+              }
               readOnly
             />
 
-            <label>{t.shopType}</label>
+            <label>
+              {t.shopType}
+            </label>
+
             <input
-              value={user?.shopType || t.generalStore}
+              value={
+                user?.shopType ||
+                t.generalStore
+              }
               readOnly
             />
           </>
@@ -1562,15 +2732,24 @@ function SimplePage({
 
         {page === "reports" && (
           <>
-            <h2>{t.reportsTitle}</h2>
+            <h2>
+              {t.reportsTitle}
+            </h2>
 
-            <p style={{ opacity: 0.7 }}>
+            <p
+              style={{
+                opacity: 0.7,
+              }}
+            >
               {t.reportsComing}
             </p>
 
             <button
+              type="button"
               className="primary-action"
-              onClick={() => onPageChange("khata")}
+              onClick={() =>
+                onPageChange("khata")
+              }
             >
               {t.viewHistory}
             </button>
@@ -1579,64 +2758,120 @@ function SimplePage({
 
         {page === "settings" && (
           <>
-            <h2>{t.settingsTitle}</h2>
+            <h2>
+              {t.settingsTitle}
+            </h2>
 
-            <label>{t.currentLanguage}</label>
+            <label>
+              {t.currentLanguage}
+            </label>
 
             <select
               value={language}
-              onChange={(e) => onLanguageChange(e.target.value)}
+              onChange={(event) =>
+                onLanguageChange(
+                  event.target.value
+                )
+              }
               style={{
                 width: "100%",
                 padding: "12px",
                 borderRadius: "10px",
-                border: "1px solid #d7d8ca",
+                border:
+                  "1px solid #d7d8ca",
                 font: "inherit",
               }}
             >
-              <option value="hi">हिंदी</option>
-              <option value="mr">मराठी</option>
-              <option value="en">English</option>
+              <option value="hi">
+                हिंदी
+              </option>
+
+              <option value="mr">
+                मराठी
+              </option>
+
+              <option value="en">
+                English
+              </option>
+
+              <option value="auto">
+                Auto
+              </option>
             </select>
           </>
         )}
 
         {page === "language" && (
           <>
-            <h2>{t.languageTitle}</h2>
+            <h2>
+              {t.languageTitle}
+            </h2>
 
-            <p style={{ opacity: 0.65 }}>
-              {t.languageChooseSub}
+            <p
+              style={{
+                opacity: 0.65,
+              }}
+            >
+              {
+                t.languageChooseSub
+              }
             </p>
 
             <button
+              type="button"
               className="primary-action"
               style={{
                 width: "100%",
-                marginBottom: "10px",
+                marginBottom:
+                  "10px",
               }}
-              onClick={() => onLanguageChange("hi")}
+              onClick={() =>
+                onLanguageChange("hi")
+              }
             >
               हिंदी
             </button>
 
             <button
+              type="button"
               className="primary-action"
               style={{
                 width: "100%",
-                marginBottom: "10px",
+                marginBottom:
+                  "10px",
               }}
-              onClick={() => onLanguageChange("mr")}
+              onClick={() =>
+                onLanguageChange("mr")
+              }
             >
               मराठी
             </button>
 
             <button
+              type="button"
               className="primary-action"
-              style={{ width: "100%" }}
-              onClick={() => onLanguageChange("en")}
+              style={{
+                width: "100%",
+              }}
+              onClick={() =>
+                onLanguageChange("en")
+              }
             >
               English
+            </button>
+
+            <button
+              type="button"
+              className="primary-action"
+              style={{
+                width: "100%",
+                marginTop: "10px",
+              }}
+              onClick={() =>
+                onLanguageChange("auto")
+              }
+            >
+              Auto
             </button>
           </>
         )}
@@ -1656,6 +2891,7 @@ export default function DashboardPages({
   onBack,
   onPageChange,
   onLogout,
+  onLanguageChange,
 }) {
   if (page === "khata") {
     return (
@@ -1671,7 +2907,9 @@ export default function DashboardPages({
     return (
       <CustomersPage
         onBack={onBack}
-        onPageChange={onPageChange}
+        onPageChange={
+          onPageChange
+        }
         user={user}
         language={language}
       />
@@ -1680,12 +2918,21 @@ export default function DashboardPages({
 
   if (page?.startsWith("customer:")) {
     const customerName =
-      page.substring("customer:".length);
+      page.substring(
+        "customer:".length
+      );
 
     return (
       <CustomerDetailPage
-        customerName={customerName}
-        onBack={() => onPageChange("customers")}
+        customerName={
+          customerName
+        }
+        onBack={() =>
+          onPageChange("customers")
+        }
+        onPageChange={
+          onPageChange
+        }
         user={user}
         language={language}
       />
@@ -1717,7 +2964,9 @@ export default function DashboardPages({
       <MorePage
         user={user}
         onBack={onBack}
-        onPageChange={onPageChange}
+        onPageChange={
+          onPageChange
+        }
         onLogout={onLogout}
         language={language}
       />
@@ -1725,81 +2974,123 @@ export default function DashboardPages({
   }
 
   if (page === "profile") {
-    const t = getTranslations(language);
+    const t =
+      getTranslations(language);
 
     return (
       <SimplePage
         page="profile"
         title={t.profileTitle}
         subtitle={t.profileSub}
-        onBack={() => onPageChange("more")}
+        onBack={() =>
+          onPageChange("more")
+        }
         user={user}
         language={language}
-        onPageChange={onPageChange}
+        onPageChange={
+          onPageChange
+        }
+        onLanguageChange={
+          onLanguageChange
+        }
       />
     );
   }
 
   if (page === "shop") {
-    const t = getTranslations(language);
+    const t =
+      getTranslations(language);
 
     return (
       <SimplePage
         page="shop"
         title={t.shopTitle}
         subtitle={t.shopSub}
-        onBack={() => onPageChange("more")}
+        onBack={() =>
+          onPageChange("more")
+        }
         user={user}
         language={language}
-        onPageChange={onPageChange}
+        onPageChange={
+          onPageChange
+        }
+        onLanguageChange={
+          onLanguageChange
+        }
       />
     );
   }
 
   if (page === "reports") {
-    const t = getTranslations(language);
+    const t =
+      getTranslations(language);
 
     return (
       <SimplePage
         page="reports"
         title={t.reportsTitle}
         subtitle={t.reportsSub}
-        onBack={() => onPageChange("more")}
+        onBack={() =>
+          onPageChange("more")
+        }
         user={user}
         language={language}
-        onPageChange={onPageChange}
+        onPageChange={
+          onPageChange
+        }
+        onLanguageChange={
+          onLanguageChange
+        }
       />
     );
   }
 
   if (page === "settings") {
-    const t = getTranslations(language);
+    const t =
+      getTranslations(language);
 
     return (
       <SimplePage
         page="settings"
         title={t.settingsTitle}
         subtitle={t.settingsSub}
-        onBack={() => onPageChange("more")}
+        onBack={() =>
+          onPageChange("more")
+        }
         user={user}
         language={language}
-        onPageChange={onPageChange}
+        onPageChange={
+          onPageChange
+        }
+        onLanguageChange={
+          onLanguageChange
+        }
       />
     );
   }
 
   if (page === "language") {
-    const t = getTranslations(language);
+    const t =
+      getTranslations(language);
 
     return (
       <SimplePage
         page="language"
         title={t.languageTitle}
-        subtitle={t.languageChooseSub}
-        onBack={() => onPageChange("more")}
+        subtitle={
+          t.languageChooseSub
+        }
+        onBack={() =>
+          onPageChange("more")
+        }
         user={user}
         language={language}
-        onPageChange={onPageChange}
+        onPageChange={
+          onPageChange
+        }
+        onLanguageChange={
+          onLanguageChange
+        }
       />
     );
   }
