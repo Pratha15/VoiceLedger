@@ -90,6 +90,7 @@ const translations = {
       "क्या आप {name} को सक्रिय स्टॉक से हटाना चाहते हैं?",
     productDeleted: "सामान सक्रिय स्टॉक से हटा दिया गया।",
     confirm: "पुष्टि करें",
+    markAsPaid: "भुगतान किया हुआ चिह्नित करें",
 
     paidConfirm: "₹{amount} को भुगतान किया हुआ चिह्नित करें?",
     paymentUpdated: "भुगतान अपडेट हो गया।",
@@ -224,6 +225,7 @@ const translations = {
       "{name} सक्रिय स्टॉकमधून हटवायचे आहे का?",
     productDeleted: "सामान सक्रिय स्टॉकमधून काढले आहे.",
     confirm: "पुष्टी करा",
+    markAsPaid: "भुगतान भरले म्हणून चिन्हांकित करा",
 
     paidConfirm: "₹{amount} भरले म्हणून चिन्हांकित करायचे?",
     paymentUpdated: "पेमेंट अपडेट झाले.",
@@ -358,6 +360,7 @@ const translations = {
       "Do you want to remove {name} from your active stock?",
     productDeleted: "Product removed from active stock.",
     confirm: "Confirm",
+    markAsPaid: "Mark as Paid",
 
     paidConfirm: "Mark ₹{amount} as paid?",
     paymentUpdated: "Payment updated.",
